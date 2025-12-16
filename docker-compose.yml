@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hydro-backend
+    restart: unless-stopped
+    volumes:
+      - sqlite_data:/app/data
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_PATH=/app/data/hydroponics.db
+    networks:
+      - hydro-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hydro-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - hydro-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  hydro-network:
+    driver: bridge
+
+volumes:
+  sqlite_data:
+    driver: local
