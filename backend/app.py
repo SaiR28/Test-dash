@@ -6,10 +6,7 @@ import sqlite3
 import json
 import time
 import os
-import base64
 from datetime import datetime, timedelta
-import threading
-import random
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -213,27 +210,12 @@ def get_unit_sensors(unit_id):
     ''', (unit_id,)).fetchone()
 
     if not sensor:
-        # Return mock data if no readings
         return jsonify({
             "unit_id": unit_id,
-            "timestamp": int(time.time()),
-            "reservoir": {
-                "ph": 6.2,
-                "tds": 950,
-                "turbidity": 12,
-                "water_temp": 22.4,
-                "water_level": 78
-            },
-            "climate": {
-                "L11": {"temp": 24.1, "humidity": 70},
-                "L12": {"temp": 24.4, "humidity": 71},
-                "L21": {"temp": 23.9, "humidity": 69},
-                "L22": {"temp": 24.0, "humidity": 68},
-                "L31": {"temp": 24.2, "humidity": 72},
-                "L32": {"temp": 24.5, "humidity": 71},
-                "L41": {"temp": 25.1, "humidity": 74},
-                "L42": {"temp": 25.0, "humidity": 73}
-            }
+            "timestamp": None,
+            "reservoir": {"ph": None, "tds": None, "turbidity": None, "water_temp": None, "water_level": None},
+            "climate": {},
+            "status": "no_data"
         })
 
     climate_data = json.loads(sensor['climate_data']) if sensor['climate_data'] else {}
@@ -250,6 +232,36 @@ def get_unit_sensors(unit_id):
         },
         "climate": climate_data
     })
+
+@app.route('/units/<unit_id>/sensors', methods=['POST'])
+def update_unit_sensors(unit_id):
+    """Receive sensor data from ESP32 controller"""
+    data = request.get_json()
+    db = get_db()
+    timestamp = int(time.time())
+
+    reservoir = data.get('reservoir', {})
+    climate = data.get('climate', {})
+
+    db.execute('''
+        INSERT INTO sensor_readings
+        (unit_id, timestamp, ph, tds, turbidity, water_temp, water_level, climate_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        unit_id, timestamp,
+        reservoir.get('ph'), reservoir.get('tds'),
+        reservoir.get('turbidity'), reservoir.get('water_temp'),
+        reservoir.get('water_level'), json.dumps(climate)
+    ))
+    db.commit()
+
+    # Broadcast update via WebSocket
+    socketio.emit('sensor_update', {
+        'unit_id': unit_id,
+        'timestamp': timestamp
+    })
+
+    return jsonify({"status": "ok", "unit_id": unit_id, "timestamp": timestamp})
 
 @app.route('/units/<unit_id>/relays', methods=['GET'])
 def get_unit_relays(unit_id):
@@ -498,14 +510,10 @@ def get_front_room_sensors():
     if not sensor:
         return jsonify({
             "unit_id": "ROOM_FRONT",
-            "timestamp": int(time.time()),
-            "bme": {
-                "temp": 25.4,
-                "humidity": 62,
-                "pressure": 1007,
-                "iaq": 132
-            },
-            "co2": 780
+            "timestamp": None,
+            "bme": {"temp": None, "humidity": None, "pressure": None, "iaq": None},
+            "co2": None,
+            "status": "no_data"
         })
 
     return jsonify({
@@ -519,6 +527,33 @@ def get_front_room_sensors():
         },
         "co2": sensor['co2']
     })
+
+@app.route('/room/front/sensors', methods=['POST'])
+def update_front_room_sensors():
+    """Receive sensor data from ESP32 controller"""
+    data = request.get_json()
+    db = get_db()
+    timestamp = int(time.time())
+
+    db.execute('''
+        INSERT INTO room_sensors
+        (unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        'ROOM_FRONT', timestamp,
+        data.get('temp'), data.get('humidity'),
+        data.get('pressure'), data.get('iaq'),
+        data.get('co2'), None, None
+    ))
+    db.commit()
+
+    # Broadcast update via WebSocket
+    socketio.emit('room_update', {
+        'unit_id': 'ROOM_FRONT',
+        'timestamp': timestamp
+    })
+
+    return jsonify({"status": "ok", "timestamp": timestamp})
 
 @app.route('/room/back/sensors', methods=['GET'])
 def get_back_room_sensors():
@@ -535,18 +570,11 @@ def get_back_room_sensors():
     if not sensor:
         return jsonify({
             "unit_id": "ROOM_BACK",
-            "timestamp": int(time.time()),
-            "bme": {
-                "temp": 25.4,
-                "humidity": 62,
-                "pressure": 1007,
-                "iaq": 132
-            },
-            "co2": 780,
-            "ac": {
-                "current_set_temp": 24,
-                "mode": "COOL"
-            }
+            "timestamp": None,
+            "bme": {"temp": None, "humidity": None, "pressure": None, "iaq": None},
+            "co2": None,
+            "ac": {"current_set_temp": None, "mode": None},
+            "status": "no_data"
         })
 
     return jsonify({
@@ -564,6 +592,34 @@ def get_back_room_sensors():
             "mode": sensor['ac_mode']
         }
     })
+
+@app.route('/room/back/sensors', methods=['POST'])
+def update_back_room_sensors():
+    """Receive sensor data from ESP32 controller"""
+    data = request.get_json()
+    db = get_db()
+    timestamp = int(time.time())
+
+    db.execute('''
+        INSERT INTO room_sensors
+        (unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        'ROOM_BACK', timestamp,
+        data.get('temp'), data.get('humidity'),
+        data.get('pressure'), data.get('iaq'),
+        data.get('co2'), data.get('ac_temp'),
+        data.get('ac_mode', 'COOL')
+    ))
+    db.commit()
+
+    # Broadcast update via WebSocket
+    socketio.emit('room_update', {
+        'unit_id': 'ROOM_BACK',
+        'timestamp': timestamp
+    })
+
+    return jsonify({"status": "ok", "timestamp": timestamp})
 
 @app.route('/room/back/ac_schedule', methods=['GET'])
 def get_ac_schedule():
@@ -1065,118 +1121,8 @@ def handle_leave_unit(data):
     leave_room(unit_id)
     emit('left', {'unit_id': unit_id})
 
-# Background task to simulate sensor data updates
-def simulate_sensor_updates():
-    """Background task to simulate sensor data updates"""
-    while True:
-        try:
-            with app.app_context():
-                db = get_db()
-                timestamp = int(time.time())
-
-                # Update hydro units
-                unit_ids = ['DWC1', 'DWC2', 'NFT', 'AERO', 'TROUGH']
-                for unit_id in unit_ids:
-
-                    # Generate random sensor data
-                    climate_data = {}
-                    for level in [1, 2, 3, 4]:
-                        for pos in [1, 2]:
-                            key = f"L{level}{pos}"
-                            climate_data[key] = {
-                                "temp": round(random.uniform(22, 26), 1),
-                                "humidity": random.randint(65, 75)
-                            }
-
-                    # Insert sensor reading
-                    db.execute('''
-                        INSERT INTO sensor_readings
-                        (unit_id, timestamp, ph, tds, turbidity, water_temp, water_level, climate_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        unit_id, timestamp,
-                        round(random.uniform(5.5, 7.0), 1),
-                        random.randint(800, 1200),
-                        random.randint(8, 20),
-                        round(random.uniform(20, 25), 1),
-                        random.randint(70, 90),
-                        json.dumps(climate_data)
-                    ))
-
-                # Update room sensors
-                for room in ['ROOM_FRONT', 'ROOM_BACK']:
-                    ac_temp = random.randint(22, 26) if room == 'ROOM_BACK' else None
-                    ac_mode = 'COOL' if room == 'ROOM_BACK' else None
-
-                    db.execute('''
-                        INSERT INTO room_sensors
-                        (unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        room, timestamp,
-                        round(random.uniform(22, 28), 1),
-                        random.randint(55, 70),
-                        random.randint(1000, 1020),
-                        random.randint(100, 200),
-                        random.randint(400, 1000),
-                        ac_temp, ac_mode
-                    ))
-
-                db.commit()
-
-                # Simulate camera images every 5 minutes (300 seconds)
-                if timestamp % 300 == 0:  # Every 5 minutes
-                    # Generate mock camera images for each unit
-                    unit_ids = ['DWC1', 'DWC2', 'NFT', 'AERO', 'TROUGH']
-                    for unit_id in unit_ids:
-                        # Each unit can have 1-8 cameras (simulating random presence)
-                        num_cameras = random.randint(2, 6)
-
-                        for i in range(num_cameras):
-                            level = random.randint(1, 4)
-                            position = random.randint(1, 2)
-                            camera_id = f"{unit_id}L{level}{position}"
-
-                            # Create mock image data (you would normally receive actual image)
-                            mock_image_path = f"{UPLOAD_FOLDER}/mock_{camera_id}_{timestamp}.jpg"
-
-                            # Insert camera image record
-                            db.execute('''
-                                INSERT INTO camera_images
-                                (camera_id, unit_id, level, position, image_path, timestamp, file_size)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ''', (camera_id, unit_id, level, position, mock_image_path, timestamp, 1024))
-
-                            # Update camera status
-                            db.execute('''
-                                INSERT OR REPLACE INTO camera_status
-                                (camera_id, unit_id, last_image_timestamp, total_images, status, updated_at)
-                                VALUES (?, ?, ?,
-                                    COALESCE((SELECT total_images FROM camera_status WHERE camera_id = ?), 0) + 1,
-                                    'online', CURRENT_TIMESTAMP)
-                            ''', (camera_id, unit_id, timestamp, camera_id))
-
-                            # Log camera simulation
-                            print(f"Simulated camera {camera_id} image at {timestamp}")
-
-                # Broadcast updates via WebSocket
-                socketio.emit('sensor_update', {
-                    'timestamp': timestamp,
-                    'message': 'Sensor data updated'
-                })
-
-        except Exception as e:
-            print(f"Error in sensor simulation: {e}")
-
-        time.sleep(30)  # Update every 30 seconds
-
 # Initialize database when module loads (works with both direct run and Gunicorn)
 init_db()
-
-# Start background sensor simulation thread
-sensor_thread = threading.Thread(target=simulate_sensor_updates)
-sensor_thread.daemon = True
-sensor_thread.start()
 
 if __name__ == '__main__':
     # Run Flask app with SocketIO (development mode)
