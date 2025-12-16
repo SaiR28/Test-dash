@@ -17,13 +17,17 @@ app.config['SECRET_KEY'] = 'hydroponics_secret_key_2024'
 CORS(app, origins="*")
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Configuration
-DATABASE = 'hydroponics.db'
-UPLOAD_FOLDER = 'camera_images'
+# Configuration - use environment variable for production (Docker)
+DATABASE = os.environ.get('DATABASE_PATH', 'hydroponics.db')
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'camera_images')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-# Create upload directory
+# Create required directories
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Ensure database directory exists (for Docker volume mount)
+db_dir = os.path.dirname(DATABASE)
+if db_dir:
+    os.makedirs(db_dir, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -1166,14 +1170,14 @@ def simulate_sensor_updates():
 
         time.sleep(30)  # Update every 30 seconds
 
+# Initialize database when module loads (works with both direct run and Gunicorn)
+init_db()
+
+# Start background sensor simulation thread
+sensor_thread = threading.Thread(target=simulate_sensor_updates)
+sensor_thread.daemon = True
+sensor_thread.start()
+
 if __name__ == '__main__':
-    # Initialize database
-    init_db()
-
-    # Start background sensor simulation
-    sensor_thread = threading.Thread(target=simulate_sensor_updates)
-    sensor_thread.daemon = True
-    sensor_thread.start()
-
-    # Run Flask app with SocketIO
+    # Run Flask app with SocketIO (development mode)
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
