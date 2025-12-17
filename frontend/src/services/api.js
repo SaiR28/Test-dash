@@ -112,6 +112,9 @@ export const exportAPI = {
   // Export sensor data as CSV
   exportSensorsCsv: (params) => api.get(`/export/sensors/csv?${params}`, { responseType: 'blob' }),
 
+  // Export room sensor data as CSV
+  exportRoomCsv: (params) => api.get(`/export/room/csv?${params}`, { responseType: 'blob' }),
+
   // Export camera images as ZIP
   exportImagesZip: (params) => api.get(`/export/images/zip?${params}`, { responseType: 'blob' }),
 };

@@ -948,6 +948,109 @@ def export_sensors_csv():
         headers={'Content-Disposition': f'attachment; filename=sensor-data-{unit}-{date_range}.csv'}
     )
 
+@app.route('/export/room/csv', methods=['GET'])
+def export_room_csv():
+    """Export room sensor data as CSV"""
+    import csv
+    import io
+    from datetime import datetime, timedelta
+
+    room = request.args.get('room', 'ALL')  # ALL, ROOM_FRONT, ROOM_BACK
+    date_range = request.args.get('range', 'last7days')
+    start_date = request.args.get('startDate')
+    end_date = request.args.get('endDate')
+
+    db = get_db()
+
+    # Calculate date range
+    end_time = int(time.time())
+    if date_range == 'today':
+        start_time = end_time - 86400
+    elif date_range == 'yesterday':
+        start_time = end_time - 172800
+        end_time = end_time - 86400
+    elif date_range == 'last7days':
+        start_time = end_time - (7 * 86400)
+    elif date_range == 'last30days':
+        start_time = end_time - (30 * 86400)
+    elif date_range == 'thismonth':
+        now = datetime.now()
+        start_of_month = datetime(now.year, now.month, 1)
+        start_time = int(start_of_month.timestamp())
+    elif date_range == 'lastmonth':
+        now = datetime.now()
+        if now.month == 1:
+            start_of_last_month = datetime(now.year - 1, 12, 1)
+            end_of_last_month = datetime(now.year, 1, 1) - timedelta(days=1)
+        else:
+            start_of_last_month = datetime(now.year, now.month - 1, 1)
+            end_of_last_month = datetime(now.year, now.month, 1) - timedelta(days=1)
+        start_time = int(start_of_last_month.timestamp())
+        end_time = int(end_of_last_month.timestamp())
+    elif date_range == 'custom' and start_date and end_date:
+        start_time = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())
+        end_time = int(datetime.strptime(end_date, '%Y-%m-%d').timestamp()) + 86399
+    else:
+        start_time = end_time - (7 * 86400)
+
+    # Build query
+    if room == 'ALL':
+        query = '''
+            SELECT unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode
+            FROM room_sensors
+            WHERE timestamp BETWEEN ? AND ?
+            ORDER BY timestamp DESC
+        '''
+        params = (start_time, end_time)
+    else:
+        query = '''
+            SELECT unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode
+            FROM room_sensors
+            WHERE unit_id = ? AND timestamp BETWEEN ? AND ?
+            ORDER BY timestamp DESC
+        '''
+        params = (room, start_time, end_time)
+
+    readings = db.execute(query, params).fetchall()
+
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    header = ['Room', 'Timestamp', 'DateTime', 'Temperature (°C)', 'Humidity (%)',
+              'Pressure (hPa)', 'IAQ', 'CO2 (ppm)', 'AC Temp (°C)', 'AC Mode']
+    writer.writerow(header)
+
+    # Write data
+    for reading in readings:
+        timestamp = reading['timestamp']
+        dt = datetime.fromtimestamp(timestamp, tz=IST)
+
+        room_name = 'Front Room' if reading['unit_id'] == 'ROOM_FRONT' else 'Back Room'
+
+        row = [
+            room_name,
+            timestamp,
+            dt.strftime('%Y-%m-%d %H:%M:%S'),
+            reading['temp'],
+            reading['humidity'],
+            reading['pressure'],
+            reading['iaq'],
+            reading['co2'],
+            reading['ac_temp'],
+            reading['ac_mode']
+        ]
+        writer.writerow(row)
+
+    output.seek(0)
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=room-data-{room}-{date_range}.csv'}
+    )
+
 @app.route('/export/images/zip', methods=['GET'])
 def export_images_zip():
     """Export camera images as ZIP"""
