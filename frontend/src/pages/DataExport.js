@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import axios from 'axios';
+import { exportAPI } from '../services/api';
 
 const Container = styled.div`
   display: flex;
@@ -188,9 +188,7 @@ const DataExport = () => {
         })
       });
 
-      const response = await axios.get(`/export/sensors/csv?${params}`, {
-        responseType: 'blob'
-      });
+      const response = await exportAPI.exportSensorsCsv(params.toString());
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
@@ -224,9 +222,7 @@ const DataExport = () => {
         })
       });
 
-      const response = await axios.get(`/export/images/zip?${params}`, {
-        responseType: 'blob'
-      });
+      const response = await exportAPI.exportImagesZip(params.toString());
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');

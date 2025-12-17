@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import CameraGrid from '../components/CameraGrid';
-import axios from 'axios';
+import api from '../services/api';
 
 const Container = styled.div`
   display: flex;
@@ -120,7 +120,7 @@ const CameraMonitoring = () => {
 
   const fetchOverallStatus = async () => {
     try {
-      const response = await axios.get('/cameras/status');
+      const response = await api.get('/cameras/status');
       const data = response.data;
 
       let online = 0, warning = 0, offline = 0, total = 0;

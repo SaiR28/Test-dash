@@ -22,8 +22,8 @@ int pwmPin = 34;
 const char* ssid = "EXT_2.4G";
 const char* password = "HieRiih7sai8Choo";
 
-// Backend API settings - UPDATE THIS WITH YOUR EC2 IP
-const char* backendURL = "http://YOUR_EC2_PUBLIC_IP/api";
+// Backend API settings
+const char* backendURL = "http://98.94.183.238/api";
 
 // NTP settings
 WiFiUDP udp;
@@ -372,45 +372,69 @@ void loop() {
     }
 
     // ---------- CO2 + BME ----------
-    unsigned long high_us = pulseIn(pwmPin, HIGH, 200000);
-
     float co2 = 0;
     float temp = 0;
     float humidity = 0;
     int pressure = 0;
     int iaq = 0;
 
+    // Try to read CO2 sensor (PWM)
+    unsigned long high_us = pulseIn(pwmPin, HIGH, 200000);
     if (high_us > 0) {
         float high_ms = high_us / 1000.0;
         co2 = 5000 * (high_ms - 2.0) / 98.0;
-
-        Serial.print("CO2: ");
-        Serial.print(co2);
-        Serial.println(" ppm");
-
-        bme.startConvert();
-        delay(200);
-        bme.update();
-
-        temp = bme.readTemperature();
-        humidity = bme.readHumidity() / 1073.0;
-        pressure = bme.readPressure() / 100; // Convert to hPa
-        iaq = bme.readGasResistance() / 1000; // Simplified IAQ from gas resistance
-
-        Serial.print("Temperature: ");
-        Serial.println(temp);
-        Serial.print("Humidity(%rh): ");
-        Serial.println(humidity);
-        Serial.print("Pressure(hPa): ");
-        Serial.println(pressure);
-        Serial.println("--------------------");
-
-        // Send data to backend every 30 seconds
-        if (millis() - lastDataSendTime >= DATA_SEND_INTERVAL) {
-            sendSensorData(temp, humidity, pressure, iaq, (int)co2, currentTemp);
-            lastDataSendTime = millis();
-        }
+    } else {
+        Serial.println("Note: No CO2 pulse detected (sensor may need warm-up or check wiring)");
+        co2 = 0;
     }
+
+    // Always read BME sensor
+    bme.startConvert();
+    delay(200);
+    bme.update();
+
+    temp = bme.readTemperature() / 100.0;  // Convert to actual temperature (21.82°C)
+    humidity = bme.readHumidity() / 1073.0;
+    pressure = bme.readPressure() / 100; // Convert to hPa
+    iaq = bme.readGasResistance() / 1000; // Simplified IAQ from gas resistance
+
+    // Print all sensor readings
+    Serial.println("========== SENSOR READINGS ==========");
+    Serial.print("Temperature:  ");
+    Serial.print(temp, 1);
+    Serial.println(" C");
+    Serial.print("Humidity:     ");
+    Serial.print(humidity, 1);
+    Serial.println(" %RH");
+    Serial.print("Pressure:     ");
+    Serial.print(pressure);
+    Serial.println(" hPa");
+    Serial.print("CO2:          ");
+    Serial.print((int)co2);
+    Serial.println(" ppm");
+    Serial.print("IAQ (gas):    ");
+    Serial.println(iaq);
+    Serial.print("AC Set Temp:  ");
+    Serial.print(currentTemp);
+    Serial.println(" C");
+    Serial.println("=====================================");
+
+    // Send data to backend every 30 seconds
+    unsigned long timeSinceLastSend = millis() - lastDataSendTime;
+    Serial.print("Time since last send: ");
+    Serial.print(timeSinceLastSend / 1000);
+    Serial.println(" seconds");
+
+    if (timeSinceLastSend >= DATA_SEND_INTERVAL) {
+        Serial.println(">>> SENDING DATA TO BACKEND...");
+        sendSensorData(temp, humidity, pressure, iaq, (int)co2, currentTemp);
+        lastDataSendTime = millis();
+    } else {
+        Serial.print("Next send in: ");
+        Serial.print((DATA_SEND_INTERVAL - timeSinceLastSend) / 1000);
+        Serial.println(" seconds");
+    }
+    Serial.println();
 
     delay(1000);
 }
@@ -515,15 +539,19 @@ void fetchACSchedule() {
 
 // Send sensor data to backend
 void sendSensorData(float temp, float humidity, int pressure, int iaq, int co2, int acTemp) {
+    Serial.println("-------- BACKEND UPLOAD --------");
+
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("WiFi not connected, skipping data send");
+        Serial.println("ERROR: WiFi not connected!");
+        Serial.println("--------------------------------");
         return;
     }
+    Serial.println("WiFi: Connected");
 
     HTTPClient http;
     String url = String(backendURL) + "/room/back/sensors";
 
-    Serial.print("Sending sensor data to: ");
+    Serial.print("URL: ");
     Serial.println(url);
 
     http.begin(url);
@@ -542,17 +570,28 @@ void sendSensorData(float temp, float humidity, int pressure, int iaq, int co2, 
     String json;
     serializeJson(doc, json);
 
-    Serial.println("Sending: " + json);
+    Serial.print("JSON: ");
+    Serial.println(json);
 
+    Serial.println("Sending POST request...");
     int httpCode = http.POST(json);
+
+    Serial.print("HTTP Response Code: ");
+    Serial.println(httpCode);
 
     if (httpCode == 200) {
         String response = http.getString();
-        Serial.println("Data sent successfully: " + response);
+        Serial.println("SUCCESS! Server response:");
+        Serial.println(response);
+    } else if (httpCode > 0) {
+        Serial.println("ERROR: Server returned error");
+        String response = http.getString();
+        Serial.println(response);
     } else {
-        Serial.print("HTTP error sending data: ");
-        Serial.println(httpCode);
+        Serial.print("ERROR: Connection failed - ");
+        Serial.println(http.errorToString(httpCode));
     }
 
     http.end();
+    Serial.println("--------------------------------");
 }

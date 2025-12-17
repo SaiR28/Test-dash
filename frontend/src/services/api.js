@@ -95,6 +95,30 @@ export const cameraAPI = {
   getLatestImages: (unitId) => api.get(`/units/${unitId}/cameras/latest`),
 };
 
+// Settings API
+export const settingsAPI = {
+  // Get safe ranges
+  getRanges: () => api.get('/settings/ranges'),
+
+  // Update safe ranges
+  updateRanges: (ranges) => api.post('/settings/ranges', { ranges }),
+
+  // Clear database
+  clearData: () => api.post('/settings/clear-data'),
+};
+
+// Export API
+export const exportAPI = {
+  // Export sensor data as CSV
+  exportSensorsCsv: (params) => api.get(`/export/sensors/csv?${params}`, { responseType: 'blob' }),
+
+  // Export camera images as ZIP
+  exportImagesZip: (params) => api.get(`/export/images/zip?${params}`, { responseType: 'blob' }),
+};
+
+// Get API base URL for direct image URLs
+export const getApiBaseUrl = () => API_BASE_URL;
+
 // Utility functions
 export const apiUtils = {
   // Handle API errors

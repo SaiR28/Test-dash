@@ -6,8 +6,11 @@ import sqlite3
 import json
 import time
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from werkzeug.utils import secure_filename
+
+# Indian Standard Time (UTC+5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'hydroponics_secret_key_2024'
@@ -922,7 +925,7 @@ def export_sensors_csv():
     # Write data
     for reading in readings:
         timestamp = reading['timestamp']
-        dt = datetime.fromtimestamp(timestamp)
+        dt = datetime.fromtimestamp(timestamp, tz=IST)
 
         row = [
             reading['unit_id'],
@@ -1027,7 +1030,7 @@ def export_images_zip():
             unit_id = camera_id[:camera_id.index('L')] if 'L' in camera_id else 'UNKNOWN'
 
             # Create organized path in ZIP
-            dt = datetime.fromtimestamp(timestamp)
+            dt = datetime.fromtimestamp(timestamp, tz=IST)
             date_str = dt.strftime('%Y-%m-%d')
             time_str = dt.strftime('%H-%M-%S')
 

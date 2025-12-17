@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { useSocket } from '../contexts/SocketContext';
-import axios from 'axios';
+import { hydroUnitsAPI, roomAPI } from '../services/api';
 
 const Container = styled.div`
   display: flex;
@@ -299,14 +299,14 @@ const Dashboard = () => {
     const fetchData = async () => {
       try {
         const hydroPromises = hydroUnits.map(async (unit) => {
-          const response = await axios.get(`/units/${unit.id}/sensors`);
+          const response = await hydroUnitsAPI.getSensors(unit.id);
           return { unitId: unit.id, data: response.data };
         });
 
         const [hydroResults, frontResponse, backResponse] = await Promise.all([
           Promise.all(hydroPromises),
-          axios.get('/room/front/sensors'),
-          axios.get('/room/back/sensors')
+          roomAPI.getFrontSensors(),
+          roomAPI.getBackSensors()
         ]);
 
         const hydroData = {};
