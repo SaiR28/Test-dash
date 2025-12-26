@@ -3,48 +3,52 @@ import { useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import SensorCard from '../components/SensorCard';
 import DHT22Card from '../components/DHT22Card';
-import ToggleRelay from '../components/ToggleRelay';
-import TimeRange from '../components/TimeRange';
-import PumpCycle from '../components/PumpCycle';
+import RelayControl from '../components/RelayControl';
+import PumpControl from '../components/PumpControl';
 import { hydroUnitsAPI, apiUtils } from '../services/api';
 import { useSocket } from '../contexts/SocketContext';
-import axios from 'axios';
 
 const Container = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${props => props.theme.spacing.xl};
+  gap: ${props => props.theme.spacing.md};
 `;
 
 const Section = styled.section`
   background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.lg};
-  padding: ${props => props.theme.spacing.xl};
+  border-radius: ${props => props.theme.borderRadius.md};
+  padding: ${props => props.theme.spacing.md};
   box-shadow: ${props => props.theme.shadows.sm};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.sm};
+    border-radius: ${props => props.theme.borderRadius.sm};
+  }
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: ${props => props.theme.colors.text};
-  margin-bottom: ${props => props.theme.spacing.lg};
-  display: flex;
-  align-items: center;
-  gap: ${props => props.theme.spacing.sm};
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-bottom: ${props => props.theme.spacing.sm};
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 `;
 
 const ClimateGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: ${props => props.theme.spacing.md};
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: ${props => props.theme.spacing.xs};
 
-  @media (max-width: ${props => props.theme.breakpoints.lg}) {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  @media (max-width: ${props => props.theme.breakpoints.md}) {
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
     grid-template-columns: repeat(2, 1fr);
   }
+`;
+
+const RelayGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: ${props => props.theme.spacing.sm};
 
   @media (max-width: ${props => props.theme.breakpoints.sm}) {
     grid-template-columns: 1fr;
@@ -157,6 +161,20 @@ const HydroUnitDetail = () => {
     }
   };
 
+  const handleModeChange = async (relayType, newMode) => {
+    try {
+      const response = await hydroUnitsAPI.updateControlMode(unitId, relayType, newMode);
+      // Update schedule data with the new control modes
+      setScheduleData(prev => ({
+        ...prev,
+        control_modes: response.data.control_modes
+      }));
+    } catch (err) {
+      console.error('Error changing control mode:', err);
+      throw new Error(apiUtils.handleError(err, 'Failed to change control mode'));
+    }
+  };
+
 
   if (loading) {
     return <LoadingMessage>Loading {unitId} data...</LoadingMessage>;
@@ -258,67 +276,43 @@ const HydroUnitDetail = () => {
         )}
       </Section>
 
-      {/* Actuator Controls */}
+      {/* Relay Controls */}
       <Section>
-        <SectionTitle>🎛️ Actuator Controls</SectionTitle>
+        <SectionTitle>🎛️ Relay Controls</SectionTitle>
         {relayData?.relays && (
-          <div>
-            <ToggleRelay
+          <RelayGrid>
+            <RelayControl
               label="Lights"
-              state={relayData.relays.lights}
-              onChange={(newState) => handleRelayUpdate('lights', newState)}
               icon="💡"
-              controlMode={scheduleData._control_mode || 'timer'}
-              scheduleInfo={scheduleData.lights}
+              relayType="lights"
+              state={relayData.relays.lights}
+              controlMode={scheduleData.control_modes?.lights || 'timer'}
+              schedule={scheduleData.lights}
+              onRelayToggle={(newState) => handleRelayUpdate('lights', newState)}
+              onModeChange={(newMode) => handleModeChange('lights', newMode)}
+              onScheduleUpdate={(timeData) => handleTimeRangeUpdate('lights', timeData)}
             />
-            <ToggleRelay
+            <RelayControl
               label="Fans"
-              state={relayData.relays.fans}
-              onChange={(newState) => handleRelayUpdate('fans', newState)}
               icon="🌀"
-              controlMode={scheduleData._control_mode || 'timer'}
-              scheduleInfo={scheduleData.fans}
+              relayType="fans"
+              state={relayData.relays.fans}
+              controlMode={scheduleData.control_modes?.fans || 'timer'}
+              schedule={scheduleData.fans}
+              onRelayToggle={(newState) => handleRelayUpdate('fans', newState)}
+              onModeChange={(newMode) => handleModeChange('fans', newMode)}
+              onScheduleUpdate={(timeData) => handleTimeRangeUpdate('fans', timeData)}
             />
-            <ToggleRelay
-              label="Pump"
+            <PumpControl
               state={relayData.relays.pump}
-              onChange={(newState) => handleRelayUpdate('pump', newState)}
-              icon="💧"
-              controlMode={scheduleData._control_mode || 'timer'}
-              scheduleInfo={scheduleData.pump_cycle ? {
-                detail: `${scheduleData.pump_cycle.on_duration_sec}s ON / ${scheduleData.pump_cycle.interval_sec}s cycle`
-              } : null}
+              controlMode={scheduleData.control_modes?.pump || 'timer'}
+              pumpCycle={scheduleData.pump_cycle}
+              onRelayToggle={(newState) => handleRelayUpdate('pump', newState)}
+              onModeChange={(newMode) => handleModeChange('pump', newMode)}
+              onCycleUpdate={handlePumpCycleUpdate}
             />
-          </div>
+          </RelayGrid>
         )}
-      </Section>
-
-      {/* Schedule Settings */}
-      <Section>
-        <SectionTitle>⏰ Schedule Settings</SectionTitle>
-        <div>
-          <TimeRange
-            label="Lights"
-            on={scheduleData.lights?.on}
-            off={scheduleData.lights?.off}
-            onUpdate={(timeData) => handleTimeRangeUpdate('lights', timeData)}
-            icon="💡"
-            controlMode={scheduleData._control_mode || 'timer'}
-          />
-          <TimeRange
-            label="Fans"
-            on={scheduleData.fans?.on}
-            off={scheduleData.fans?.off}
-            onUpdate={(timeData) => handleTimeRangeUpdate('fans', timeData)}
-            icon="🌀"
-            controlMode={scheduleData._control_mode || 'timer'}
-          />
-          <PumpCycle
-            durationSec={scheduleData.pump_cycle?.on_duration_sec}
-            intervalSec={scheduleData.pump_cycle?.interval_sec}
-            onUpdate={handlePumpCycleUpdate}
-          />
-        </div>
       </Section>
 
     </Container>

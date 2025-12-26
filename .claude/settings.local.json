@@ -1,14 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pip install:*)",
-      "Bash(python:*)",
-      "Bash(curl:*)",
-      "Bash(npm start)",
-      "Bash(unzip:*)",
-      "Bash(tasklist)",
-      "Bash(findstr:*)",
-      "Bash(taskkill:*)"
+      "Bash(tree -L 2)"
     ]
   }
 }

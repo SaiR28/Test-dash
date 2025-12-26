@@ -9,6 +9,7 @@ import RoomFront from './pages/RoomFront';
 import RoomBack from './pages/RoomBack';
 import CameraMonitoring from './pages/CameraMonitoring';
 import DataExport from './pages/DataExport';
+import Settings from './pages/Settings';
 import { SocketProvider } from './contexts/SocketContext';
 import GlobalStyle from './styles/GlobalStyle';
 import theme from './styles/theme';
@@ -28,6 +29,7 @@ function App() {
               <Route path="/export" element={<DataExport />} />
               <Route path="/room-front" element={<RoomFront />} />
               <Route path="/room-back" element={<RoomBack />} />
+              <Route path="/settings" element={<Settings />} />
             </Routes>
           </Layout>
         </Router>

@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// In production (Docker), use /api prefix which nginx proxies to backend
+// In development, use the proxy from package.json or direct URL
+const API_BASE_URL = process.env.REACT_APP_API_URL ||
+  (process.env.NODE_ENV === 'production' ? '/api' : '');
 
 // Create axios instance
 const api = axios.create({
@@ -49,6 +52,9 @@ export const hydroUnitsAPI = {
 
   // Update schedule for a unit
   updateSchedule: (unitId, scheduleData) => api.post(`/units/${unitId}/schedule`, scheduleData),
+
+  // Update control mode for a specific relay (manual/timer)
+  updateControlMode: (unitId, relay, mode) => api.post(`/units/${unitId}/control_mode`, { relay, mode }),
 };
 
 // Room Monitoring API

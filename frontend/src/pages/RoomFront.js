@@ -6,39 +6,62 @@ import { roomAPI, apiUtils } from '../services/api';
 const Container = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${props => props.theme.spacing.xl};
+  gap: ${props => props.theme.spacing.md};
 `;
 
 const Section = styled.section`
   background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.lg};
-  padding: ${props => props.theme.spacing.xl};
+  border-radius: ${props => props.theme.borderRadius.md};
+  padding: ${props => props.theme.spacing.md};
   box-shadow: ${props => props.theme.shadows.sm};
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: ${props => props.theme.colors.text};
-  margin-bottom: ${props => props.theme.spacing.lg};
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-bottom: ${props => props.theme.spacing.sm};
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+`;
+
+const StatusRow = styled.div`
+  display: flex;
+  gap: ${props => props.theme.spacing.md};
+  flex-wrap: wrap;
+`;
+
+const StatusItem = styled.div`
   display: flex;
   align-items: center;
   gap: ${props => props.theme.spacing.sm};
+  padding: ${props => props.theme.spacing.sm} ${props => props.theme.spacing.md};
+  background: ${props => props.theme.colors.background};
+  border-radius: ${props => props.theme.borderRadius.md};
+  font-size: 0.85rem;
+`;
+
+const StatusLabel = styled.span`
+  color: ${props => props.theme.colors.textMuted};
+`;
+
+const StatusValue = styled.span`
+  font-weight: 600;
+  color: ${props => props.theme.colors.text};
 `;
 
 const LoadingMessage = styled.div`
   text-align: center;
-  padding: ${props => props.theme.spacing.xl};
+  padding: ${props => props.theme.spacing.lg};
   color: ${props => props.theme.colors.textSecondary};
 `;
 
 const ErrorMessage = styled.div`
   background: ${props => props.theme.colors.danger}10;
   color: ${props => props.theme.colors.danger};
-  padding: ${props => props.theme.spacing.lg};
+  padding: ${props => props.theme.spacing.md};
   border-radius: ${props => props.theme.borderRadius.md};
   border: 1px solid ${props => props.theme.colors.danger}30;
-  margin-bottom: ${props => props.theme.spacing.lg};
 `;
 
 const RoomFront = () => {
@@ -62,7 +85,7 @@ const RoomFront = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -76,7 +99,6 @@ const RoomFront = () => {
 
   return (
     <Container>
-      {/* Environmental Sensors */}
       <Section>
         <SectionTitle>🌡️ Environmental Monitoring</SectionTitle>
         {sensorData && (
@@ -115,9 +137,9 @@ const RoomFront = () => {
               icon="🎯"
             />
             <SensorCard
-              title="Air Quality (IAQ)"
+              title="Air Quality"
               value={sensorData.bme?.iaq}
-              unit=""
+              unit="IAQ"
               timestamp={sensorData.timestamp}
               ranges={{
                 warning: { min: 0, max: 200 },
@@ -140,30 +162,24 @@ const RoomFront = () => {
         )}
       </Section>
 
-      {/* System Status */}
       <Section>
         <SectionTitle>📊 System Status</SectionTitle>
-        <div className="sensor-grid">
-          <SensorCard
-            title="Last Update"
-            value={sensorData ? new Date(sensorData.timestamp * 1000).toLocaleString() : 'N/A'}
-            status="normal"
-            icon="🕐"
-          />
-          <SensorCard
-            title="Sensor Status"
-            value="Online"
-            status="normal"
-            icon="✅"
-          />
-          <SensorCard
-            title="Data Points"
-            value="5"
-            unit="sensors"
-            status="normal"
-            icon="📈"
-          />
-        </div>
+        <StatusRow>
+          <StatusItem>
+            <StatusLabel>Last Update:</StatusLabel>
+            <StatusValue>
+              {sensorData ? new Date(sensorData.timestamp * 1000).toLocaleTimeString() : 'N/A'}
+            </StatusValue>
+          </StatusItem>
+          <StatusItem>
+            <StatusLabel>Sensors:</StatusLabel>
+            <StatusValue>5 Online</StatusValue>
+          </StatusItem>
+          <StatusItem>
+            <StatusLabel>Status:</StatusLabel>
+            <StatusValue style={{ color: '#10b981' }}>● Active</StatusValue>
+          </StatusItem>
+        </StatusRow>
       </Section>
     </Container>
   );

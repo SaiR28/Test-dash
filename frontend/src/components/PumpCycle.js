@@ -7,16 +7,75 @@ const Container = styled.div`
   padding: ${props => props.theme.spacing.lg};
   box-shadow: ${props => props.theme.shadows.sm};
   margin-bottom: ${props => props.theme.spacing.md};
+  border: 2px solid ${props => {
+    if (props.controlMode === 'manual') return props.theme.colors.warning;
+    if (props.controlMode === 'timer') return props.theme.colors.primary;
+    return 'transparent';
+  }};
+`;
+
+const LabelContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: ${props => props.theme.spacing.md};
 `;
 
 const Label = styled.h3`
   font-size: 1rem;
   font-weight: 600;
   color: ${props => props.theme.colors.text};
-  margin-bottom: ${props => props.theme.spacing.md};
+  margin: 0;
   display: flex;
   align-items: center;
   gap: ${props => props.theme.spacing.sm};
+`;
+
+const ControlModeStatus = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${props => props.theme.spacing.xs};
+  font-size: ${props => props.theme.fontSizes.xs};
+  font-weight: 500;
+  color: ${props => {
+    if (props.controlMode === 'manual') return props.theme.colors.warning;
+    if (props.controlMode === 'timer') return props.theme.colors.primary;
+    return props.theme.colors.textMuted;
+  }};
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+const ModeToggleButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: ${props => props.theme.spacing.xs};
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+  border-radius: ${props => props.theme.borderRadius.md};
+  font-size: ${props => props.theme.fontSizes.xs};
+  font-weight: 600;
+  cursor: pointer;
+  transition: ${props => props.theme.transitions.default};
+  border: 1px solid ${props => props.mode === 'manual'
+    ? props.theme.colors.warning
+    : props.theme.colors.primary};
+  background: ${props => props.mode === 'manual'
+    ? props.theme.colors.warning + '15'
+    : props.theme.colors.primary + '15'};
+  color: ${props => props.mode === 'manual'
+    ? props.theme.colors.warning
+    : props.theme.colors.primary};
+
+  &:hover {
+    background: ${props => props.mode === 'manual'
+      ? props.theme.colors.warning + '30'
+      : props.theme.colors.primary + '30'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 `;
 
 const InputContainer = styled.div`
@@ -149,11 +208,14 @@ const PumpCycle = ({
   durationSec = 300,
   intervalSec = 3600,
   onUpdate,
-  disabled = false
+  onModeChange,
+  disabled = false,
+  controlMode = 'timer'
 }) => {
   const [duration, setDuration] = useState(durationSec);
   const [interval, setInterval] = useState(intervalSec);
   const [loading, setLoading] = useState(false);
+  const [modeLoading, setModeLoading] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
   const hasChanges = duration !== durationSec || interval !== intervalSec;
@@ -180,11 +242,55 @@ const PumpCycle = ({
     setInterval(intervalSec);
   };
 
+  const handleModeToggle = async () => {
+    if (disabled || modeLoading || !onModeChange) return;
+
+    setModeLoading(true);
+    try {
+      const newMode = controlMode === 'manual' ? 'timer' : 'manual';
+      await onModeChange(newMode);
+    } catch (error) {
+      console.error('Error changing mode:', error);
+    } finally {
+      setModeLoading(false);
+    }
+  };
+
+  const getModeDisplay = () => {
+    if (controlMode === 'manual') {
+      return {
+        icon: '🎛️',
+        text: 'Manual Override Active'
+      };
+    }
+    return {
+      icon: '⏰',
+      text: 'Timer Control Active'
+    };
+  };
+
+  const modeDisplay = getModeDisplay();
+
   return (
-    <Container>
-      <Label>
-        💧 Pump Cycle Settings
-      </Label>
+    <Container controlMode={controlMode}>
+      <LabelContainer>
+        <Label>
+          💧 Pump Cycle Settings
+        </Label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ModeToggleButton
+            mode={controlMode}
+            onClick={handleModeToggle}
+            disabled={disabled || modeLoading}
+            title={`Switch to ${controlMode === 'manual' ? 'Timer' : 'Manual'} mode`}
+          >
+            {modeLoading ? '...' : controlMode === 'manual' ? '⏰ Timer' : '🎛️ Manual'}
+          </ModeToggleButton>
+          <ControlModeStatus controlMode={controlMode}>
+            {modeDisplay.icon} {modeDisplay.text}
+          </ControlModeStatus>
+        </div>
+      </LabelContainer>
 
       <InputContainer>
         <InputGroup>

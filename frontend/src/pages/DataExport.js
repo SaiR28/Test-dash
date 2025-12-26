@@ -5,148 +5,116 @@ import axios from 'axios';
 const Container = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${props => props.theme.spacing.xl};
-`;
-
-const PageHeader = styled.div`
-  background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.lg};
-  padding: ${props => props.theme.spacing.xl};
-  box-shadow: ${props => props.theme.shadows.sm};
-`;
-
-const PageTitle = styled.h1`
-  font-size: 2rem;
-  font-weight: 700;
-  color: ${props => props.theme.colors.text};
-  margin: 0 0 ${props => props.theme.spacing.sm} 0;
-  display: flex;
-  align-items: center;
   gap: ${props => props.theme.spacing.md};
 `;
 
-const PageDescription = styled.p`
-  color: ${props => props.theme.colors.textSecondary};
-  margin: 0;
-  font-size: ${props => props.theme.fontSizes.lg};
-`;
-
-const ExportSection = styled.div`
+const Section = styled.section`
   background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.lg};
-  padding: ${props => props.theme.spacing.xl};
+  border-radius: ${props => props.theme.borderRadius.md};
+  padding: ${props => props.theme.spacing.md};
   box-shadow: ${props => props.theme.shadows.sm};
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: ${props => props.theme.colors.text};
-  margin: 0 0 ${props => props.theme.spacing.lg} 0;
-  display: flex;
-  align-items: center;
-  gap: ${props => props.theme.spacing.sm};
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-bottom: ${props => props.theme.spacing.sm};
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 `;
 
 const SectionDescription = styled.p`
-  color: ${props => props.theme.colors.textSecondary};
-  margin: 0 0 ${props => props.theme.spacing.lg} 0;
+  color: ${props => props.theme.colors.textMuted};
+  margin: 0 0 ${props => props.theme.spacing.md} 0;
+  font-size: 0.85rem;
 `;
 
 const FormGrid = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${props => props.theme.spacing.lg};
-
-  @media (max-width: ${props => props.theme.breakpoints.md}) {
-    grid-template-columns: 1fr;
-  }
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: ${props => props.theme.spacing.md};
 `;
 
 const FormGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${props => props.theme.spacing.sm};
+  gap: ${props => props.theme.spacing.xs};
 `;
 
 const Label = styled.label`
   font-weight: 600;
   color: ${props => props.theme.colors.text};
-  font-size: ${props => props.theme.fontSizes.sm};
+  font-size: 0.8rem;
 `;
 
 const Select = styled.select`
-  padding: ${props => props.theme.spacing.md};
-  border: 2px solid ${props => props.theme.colors.border};
+  padding: ${props => props.theme.spacing.sm};
+  border: 1px solid ${props => props.theme.colors.border};
   border-radius: ${props => props.theme.borderRadius.md};
-  font-size: ${props => props.theme.fontSizes.md};
+  font-size: 0.85rem;
   background: ${props => props.theme.colors.background};
   color: ${props => props.theme.colors.text};
-  transition: ${props => props.theme.transitions.default};
+  transition: ${props => props.theme.transitions.fast};
 
   &:focus {
     outline: none;
     border-color: ${props => props.theme.colors.primary};
-    box-shadow: 0 0 0 3px ${props => props.theme.colors.primary}20;
   }
 `;
 
 const Input = styled.input`
-  padding: ${props => props.theme.spacing.md};
-  border: 2px solid ${props => props.theme.colors.border};
+  padding: ${props => props.theme.spacing.sm};
+  border: 1px solid ${props => props.theme.colors.border};
   border-radius: ${props => props.theme.borderRadius.md};
-  font-size: ${props => props.theme.fontSizes.md};
+  font-size: 0.85rem;
   background: ${props => props.theme.colors.background};
   color: ${props => props.theme.colors.text};
-  transition: ${props => props.theme.transitions.default};
+  transition: ${props => props.theme.transitions.fast};
 
   &:focus {
     outline: none;
     border-color: ${props => props.theme.colors.primary};
-    box-shadow: 0 0 0 3px ${props => props.theme.colors.primary}20;
   }
 `;
 
 const ButtonContainer = styled.div`
   display: flex;
-  gap: ${props => props.theme.spacing.md};
-  margin-top: ${props => props.theme.spacing.lg};
-  flex-wrap: wrap;
+  gap: ${props => props.theme.spacing.sm};
+  margin-top: ${props => props.theme.spacing.sm};
 `;
 
 const ExportButton = styled.button`
   background: ${props => {
     if (props.variant === 'primary') return props.theme.colors.primary;
     if (props.variant === 'success') return props.theme.colors.success;
-    return props.theme.colors.secondary;
+    return props.theme.colors.textSecondary;
   }};
   color: white;
   border: none;
-  padding: ${props => props.theme.spacing.md} ${props => props.theme.spacing.lg};
+  padding: ${props => props.theme.spacing.sm} ${props => props.theme.spacing.md};
   border-radius: ${props => props.theme.borderRadius.md};
   font-weight: 600;
-  font-size: ${props => props.theme.fontSizes.md};
+  font-size: 0.85rem;
   cursor: pointer;
-  transition: ${props => props.theme.transitions.default};
+  transition: ${props => props.theme.transitions.fast};
   display: flex;
   align-items: center;
-  gap: ${props => props.theme.spacing.sm};
+  gap: ${props => props.theme.spacing.xs};
 
   &:hover {
     opacity: 0.9;
-    transform: translateY(-1px);
   }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
   }
 `;
 
 const LoadingSpinner = styled.div`
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top: 2px solid white;
   border-radius: 50%;
@@ -159,9 +127,10 @@ const LoadingSpinner = styled.div`
 `;
 
 const StatusMessage = styled.div`
-  margin-top: ${props => props.theme.spacing.md};
-  padding: ${props => props.theme.spacing.md};
+  margin-top: ${props => props.theme.spacing.sm};
+  padding: ${props => props.theme.spacing.sm};
   border-radius: ${props => props.theme.borderRadius.md};
+  font-size: 0.85rem;
   background: ${props => {
     if (props.type === 'success') return `${props.theme.colors.success}15`;
     if (props.type === 'error') return `${props.theme.colors.danger}15`;
@@ -191,7 +160,6 @@ const DATE_RANGES = [
 ];
 
 const DataExport = () => {
-  // CSV Export State
   const [csvUnit, setCsvUnit] = useState('ALL');
   const [csvDateRange, setCsvDateRange] = useState('last7days');
   const [csvStartDate, setCsvStartDate] = useState('');
@@ -199,7 +167,6 @@ const DataExport = () => {
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvStatus, setCsvStatus] = useState(null);
 
-  // ZIP Export State
   const [zipUnit, setZipUnit] = useState('ALL');
   const [zipDateRange, setZipDateRange] = useState('last7days');
   const [zipStartDate, setZipStartDate] = useState('');
@@ -225,7 +192,6 @@ const DataExport = () => {
         responseType: 'blob'
       });
 
-      // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -235,15 +201,9 @@ const DataExport = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      setCsvStatus({
-        type: 'success',
-        message: 'CSV file downloaded successfully!'
-      });
+      setCsvStatus({ type: 'success', message: 'CSV downloaded successfully!' });
     } catch (error) {
-      setCsvStatus({
-        type: 'error',
-        message: 'Failed to export CSV data. Please try again.'
-      });
+      setCsvStatus({ type: 'error', message: 'Failed to export CSV data.' });
       console.error('CSV export error:', error);
     } finally {
       setCsvLoading(false);
@@ -268,7 +228,6 @@ const DataExport = () => {
         responseType: 'blob'
       });
 
-      // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -278,15 +237,9 @@ const DataExport = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      setZipStatus({
-        type: 'success',
-        message: 'ZIP file downloaded successfully!'
-      });
+      setZipStatus({ type: 'success', message: 'ZIP downloaded successfully!' });
     } catch (error) {
-      setZipStatus({
-        type: 'error',
-        message: 'Failed to export camera images. Please try again.'
-      });
+      setZipStatus({ type: 'error', message: 'Failed to export camera images.' });
       console.error('ZIP export error:', error);
     } finally {
       setZipLoading(false);
@@ -295,31 +248,16 @@ const DataExport = () => {
 
   return (
     <Container>
-      <PageHeader>
-        <PageTitle>
-          📊 Data Export
-        </PageTitle>
-        <PageDescription>
-          Export sensor data as CSV files or camera images as ZIP archives. Select date ranges and specific hydroponic units for targeted exports.
-        </PageDescription>
-      </PageHeader>
-
-      {/* CSV Export Section */}
-      <ExportSection>
-        <SectionTitle>
-          📈 Sensor Data Export (CSV)
-        </SectionTitle>
+      <Section>
+        <SectionTitle>📈 Sensor Data Export (CSV)</SectionTitle>
         <SectionDescription>
-          Export sensor readings including pH, TDS, temperature, humidity, and water levels in CSV format for analysis.
+          Export sensor readings including pH, TDS, temperature, humidity, and water levels.
         </SectionDescription>
 
         <FormGrid>
           <FormGroup>
-            <Label>Hydroponic Unit</Label>
-            <Select
-              value={csvUnit}
-              onChange={(e) => setCsvUnit(e.target.value)}
-            >
+            <Label>Unit</Label>
+            <Select value={csvUnit} onChange={(e) => setCsvUnit(e.target.value)}>
               {HYDRO_UNITS.map(unit => (
                 <option key={unit} value={unit}>
                   {unit === 'ALL' ? 'All Units' : unit}
@@ -330,14 +268,9 @@ const DataExport = () => {
 
           <FormGroup>
             <Label>Date Range</Label>
-            <Select
-              value={csvDateRange}
-              onChange={(e) => setCsvDateRange(e.target.value)}
-            >
+            <Select value={csvDateRange} onChange={(e) => setCsvDateRange(e.target.value)}>
               {DATE_RANGES.map(range => (
-                <option key={range.value} value={range.value}>
-                  {range.label}
-                </option>
+                <option key={range.value} value={range.value}>{range.label}</option>
               ))}
             </Select>
           </FormGroup>
@@ -352,7 +285,6 @@ const DataExport = () => {
                   onChange={(e) => setCsvStartDate(e.target.value)}
                 />
               </FormGroup>
-
               <FormGroup>
                 <Label>End Date</Label>
                 <Input
@@ -377,28 +309,20 @@ const DataExport = () => {
         </ButtonContainer>
 
         {csvStatus && (
-          <StatusMessage type={csvStatus.type}>
-            {csvStatus.message}
-          </StatusMessage>
+          <StatusMessage type={csvStatus.type}>{csvStatus.message}</StatusMessage>
         )}
-      </ExportSection>
+      </Section>
 
-      {/* ZIP Export Section */}
-      <ExportSection>
-        <SectionTitle>
-          📷 Camera Images Export (ZIP)
-        </SectionTitle>
+      <Section>
+        <SectionTitle>📷 Camera Images Export (ZIP)</SectionTitle>
         <SectionDescription>
-          Export camera images as a ZIP archive. Images are organized by unit, date, and camera ID for easy browsing.
+          Export camera images as a ZIP archive organized by unit and date.
         </SectionDescription>
 
         <FormGrid>
           <FormGroup>
-            <Label>Hydroponic Unit</Label>
-            <Select
-              value={zipUnit}
-              onChange={(e) => setZipUnit(e.target.value)}
-            >
+            <Label>Unit</Label>
+            <Select value={zipUnit} onChange={(e) => setZipUnit(e.target.value)}>
               {HYDRO_UNITS.map(unit => (
                 <option key={unit} value={unit}>
                   {unit === 'ALL' ? 'All Units' : unit}
@@ -409,14 +333,9 @@ const DataExport = () => {
 
           <FormGroup>
             <Label>Date Range</Label>
-            <Select
-              value={zipDateRange}
-              onChange={(e) => setZipDateRange(e.target.value)}
-            >
+            <Select value={zipDateRange} onChange={(e) => setZipDateRange(e.target.value)}>
               {DATE_RANGES.map(range => (
-                <option key={range.value} value={range.value}>
-                  {range.label}
-                </option>
+                <option key={range.value} value={range.value}>{range.label}</option>
               ))}
             </Select>
           </FormGroup>
@@ -431,7 +350,6 @@ const DataExport = () => {
                   onChange={(e) => setZipStartDate(e.target.value)}
                 />
               </FormGroup>
-
               <FormGroup>
                 <Label>End Date</Label>
                 <Input
@@ -456,11 +374,9 @@ const DataExport = () => {
         </ButtonContainer>
 
         {zipStatus && (
-          <StatusMessage type={zipStatus.type}>
-            {zipStatus.message}
-          </StatusMessage>
+          <StatusMessage type={zipStatus.type}>{zipStatus.message}</StatusMessage>
         )}
-      </ExportSection>
+      </Section>
     </Container>
   );
 };

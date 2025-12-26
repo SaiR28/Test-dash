@@ -10,7 +10,12 @@ import base64
 from datetime import datetime, timedelta
 import threading
 import random
+from queue import Queue
 from werkzeug.utils import secure_filename
+
+# Thread-safe queue for camera uploads (handles unlimited concurrent uploads)
+camera_upload_queue = Queue()
+QUEUE_WORKER_COUNT = 2  # Number of workers processing uploads
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'hydroponics_secret_key_2024'
@@ -29,11 +34,17 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_db():
-    """Get database connection"""
+    """Get database connection with timeout for concurrent access"""
     if 'db' not in g:
-        g.db = sqlite3.connect(DATABASE)
+        g.db = sqlite3.connect(DATABASE, timeout=30)
         g.db.row_factory = sqlite3.Row
     return g.db
+
+def get_db_direct():
+    """Get a direct database connection (for background workers)"""
+    conn = sqlite3.connect(DATABASE, timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def close_db(error):
     """Close database connection"""
@@ -49,6 +60,10 @@ def init_db():
     """Initialize database with tables"""
     with app.app_context():
         db = get_db()
+
+        # Enable WAL mode for better concurrent write performance
+        db.execute('PRAGMA journal_mode=WAL')
+        db.execute('PRAGMA synchronous=NORMAL')  # Faster writes, still safe with WAL
 
         # Hydro Units table
         db.execute('''
@@ -190,6 +205,11 @@ def init_db():
 
 # API Routes
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for Docker/load balancers"""
+    return jsonify({"status": "healthy", "timestamp": time.time()})
+
 @app.route('/units/<unit_id>/sensors', methods=['GET'])
 def get_unit_sensors(unit_id):
     """Get latest sensor data for a hydro unit"""
@@ -278,7 +298,7 @@ def get_unit_relays(unit_id):
 
 @app.route('/units/<unit_id>/relay', methods=['POST'])
 def update_unit_relay(unit_id):
-    """Update relay state for a hydro unit - switches to manual mode"""
+    """Update relay state for a hydro unit - optionally switches to manual mode"""
     data = request.get_json()
     db = get_db()
     timestamp = int(time.time())
@@ -301,12 +321,33 @@ def update_unit_relay(unit_id):
         VALUES (?, ?, ?, ?, ?)
     ''', (unit_id, timestamp, lights, fans, pump))
 
-    # Switch to manual mode when relay is manually controlled
-    db.execute('''
-        UPDATE schedules
-        SET control_mode = 'manual'
-        WHERE unit_id = ? AND active = 1
-    ''', (unit_id,))
+    # Only switch specific relay to manual mode if explicitly toggling (not mode change)
+    # Check which relay was changed and update only that relay's mode
+    relay_changed = None
+    if 'lights' in data and (not current or data['lights'] != current['lights']):
+        relay_changed = 'lights'
+    elif 'fans' in data and (not current or data['fans'] != current['fans']):
+        relay_changed = 'fans'
+    elif 'pump' in data and (not current or data['pump'] != current['pump']):
+        relay_changed = 'pump'
+
+    # Update control mode for the specific relay that was changed
+    if relay_changed:
+        schedule = db.execute('''
+            SELECT id, schedule_data FROM schedules
+            WHERE unit_id = ? AND active = 1
+            ORDER BY id DESC LIMIT 1
+        ''', (unit_id,)).fetchone()
+
+        if schedule:
+            schedule_data = json.loads(schedule['schedule_data'])
+            if 'control_modes' not in schedule_data:
+                schedule_data['control_modes'] = {'lights': 'timer', 'fans': 'timer', 'pump': 'timer'}
+            schedule_data['control_modes'][relay_changed] = 'manual'
+
+            db.execute('''
+                UPDATE schedules SET schedule_data = ? WHERE id = ?
+            ''', (json.dumps(schedule_data), schedule['id']))
 
     db.commit()
 
@@ -334,33 +375,123 @@ def get_unit_schedule(unit_id):
     ''', (unit_id,)).fetchall()
 
     result = {}
-    control_mode = 'timer'
+    # Default per-relay control modes
+    control_modes = {'lights': 'timer', 'fans': 'timer', 'pump': 'timer'}
 
     for schedule in schedules:
         schedule_data = json.loads(schedule['schedule_data'])
+        # Extract control_modes if present in schedule_data
+        if 'control_modes' in schedule_data:
+            control_modes.update(schedule_data['control_modes'])
+            del schedule_data['control_modes']
         result.update(schedule_data)
-        control_mode = schedule['control_mode'] if schedule['control_mode'] else 'timer'
 
-    result['_control_mode'] = control_mode
+    result['control_modes'] = control_modes
     return jsonify(result)
 
 @app.route('/units/<unit_id>/schedule', methods=['POST'])
 def update_unit_schedule(unit_id):
-    """Update schedule for a hydro unit - switches to timer mode"""
+    """Update schedule for a hydro unit"""
     data = request.get_json()
     db = get_db()
+
+    # Get existing schedule to preserve control_modes
+    existing = db.execute('''
+        SELECT schedule_data FROM schedules
+        WHERE unit_id = ? AND active = 1
+        ORDER BY id DESC LIMIT 1
+    ''', (unit_id,)).fetchone()
+
+    existing_control_modes = {'lights': 'timer', 'fans': 'timer', 'pump': 'timer'}
+    if existing:
+        existing_data = json.loads(existing['schedule_data'])
+        if 'control_modes' in existing_data:
+            existing_control_modes = existing_data['control_modes']
+
+    # Preserve or update control_modes
+    control_modes = data.pop('control_modes', existing_control_modes)
+
+    # If updating a specific relay's schedule, set that relay to timer mode
+    if 'lights' in data and isinstance(data['lights'], dict):
+        control_modes['lights'] = 'timer'
+    if 'fans' in data and isinstance(data['fans'], dict):
+        control_modes['fans'] = 'timer'
+    if 'pump_cycle' in data:
+        control_modes['pump'] = 'timer'
+
+    # Store control_modes in schedule_data
+    schedule_data = {**data, 'control_modes': control_modes}
 
     # Deactivate old schedules
     db.execute('UPDATE schedules SET active = 0 WHERE unit_id = ?', (unit_id,))
 
-    # Insert new schedule with timer control mode
+    # Insert new schedule
     db.execute('''
         INSERT INTO schedules (unit_id, schedule_type, schedule_data, control_mode)
         VALUES (?, ?, ?, ?)
-    ''', (unit_id, 'time_schedule', json.dumps(data), 'timer'))
+    ''', (unit_id, 'time_schedule', json.dumps(schedule_data), 'timer'))
     db.commit()
 
-    return jsonify({**data, '_control_mode': 'timer'})
+    return jsonify({**data, 'control_modes': control_modes})
+
+
+@app.route('/units/<unit_id>/control_mode', methods=['POST'])
+def update_control_mode(unit_id):
+    """Update control mode for a specific relay"""
+    data = request.get_json()
+    db = get_db()
+
+    relay_type = data.get('relay')  # 'lights', 'fans', or 'pump'
+    mode = data.get('mode')  # 'manual' or 'timer'
+
+    if relay_type not in ['lights', 'fans', 'pump']:
+        return jsonify({'error': 'Invalid relay type'}), 400
+    if mode not in ['manual', 'timer']:
+        return jsonify({'error': 'Invalid mode'}), 400
+
+    # Get existing schedule
+    schedule = db.execute('''
+        SELECT id, schedule_data FROM schedules
+        WHERE unit_id = ? AND active = 1
+        ORDER BY id DESC LIMIT 1
+    ''', (unit_id,)).fetchone()
+
+    if schedule:
+        schedule_data = json.loads(schedule['schedule_data'])
+        if 'control_modes' not in schedule_data:
+            schedule_data['control_modes'] = {'lights': 'timer', 'fans': 'timer', 'pump': 'timer'}
+        schedule_data['control_modes'][relay_type] = mode
+
+        db.execute('''
+            UPDATE schedules SET schedule_data = ? WHERE id = ?
+        ''', (json.dumps(schedule_data), schedule['id']))
+        db.commit()
+
+        return jsonify({
+            'unit_id': unit_id,
+            'relay': relay_type,
+            'mode': mode,
+            'control_modes': schedule_data['control_modes']
+        })
+    else:
+        # Create new schedule with control mode
+        schedule_data = {
+            'control_modes': {'lights': 'timer', 'fans': 'timer', 'pump': 'timer'}
+        }
+        schedule_data['control_modes'][relay_type] = mode
+
+        db.execute('''
+            INSERT INTO schedules (unit_id, schedule_type, schedule_data, control_mode)
+            VALUES (?, ?, ?, ?)
+        ''', (unit_id, 'time_schedule', json.dumps(schedule_data), 'timer'))
+        db.commit()
+
+        return jsonify({
+            'unit_id': unit_id,
+            'relay': relay_type,
+            'mode': mode,
+            'control_modes': schedule_data['control_modes']
+        })
 
 
 @app.route('/room/front/sensors', methods=['GET'])
@@ -539,7 +670,7 @@ def get_camera_images(camera_id):
 
 @app.route('/cameras/<camera_id>/upload', methods=['POST'])
 def upload_camera_image(camera_id):
-    """Upload a new camera image"""
+    """Upload a new camera image - uses queue for database writes to handle 20+ concurrent uploads"""
     if 'image' not in request.files:
         return jsonify({'error': 'No image file provided'}), 400
 
@@ -548,50 +679,48 @@ def upload_camera_image(camera_id):
         return jsonify({'error': 'No image file selected'}), 400
 
     if file and allowed_file(file.filename):
-        db = get_db()
         timestamp = int(time.time())
 
         # Parse camera ID to get unit, level, position
         # Format: UNITL<level><position> (e.g., DWCL11, NFTL23)
-        unit_id = camera_id[:camera_id.index('L')]
-        level_pos = camera_id[camera_id.index('L')+1:]
-        level = int(level_pos[0])
-        position = int(level_pos[1])
+        try:
+            unit_id = camera_id[:camera_id.index('L')]
+            level_pos = camera_id[camera_id.index('L')+1:]
+            level = int(level_pos[0])
+            position = int(level_pos[1])
+        except (ValueError, IndexError):
+            return jsonify({'error': 'Invalid camera_id format. Expected: UNITL<level><position>'}), 400
 
-        # Generate secure filename
-        filename = f"{camera_id}_{timestamp}.jpg"
+        # Generate unique filename with microseconds to prevent collisions
+        unique_suffix = f"{timestamp}_{int(time.time() * 1000000) % 1000000}"
+        filename = f"{camera_id}_{unique_suffix}.jpg"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
 
-        # Save file
+        # Save file immediately (fast, non-blocking)
         file.save(filepath)
         file_size = os.path.getsize(filepath)
 
-        # Insert image record
-        db.execute('''
-            INSERT INTO camera_images
-            (camera_id, unit_id, level, position, image_path, timestamp, file_size)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (camera_id, unit_id, level, position, filepath, timestamp, file_size))
+        # Queue database write (processed async by background worker)
+        camera_upload_queue.put({
+            'camera_id': camera_id,
+            'unit_id': unit_id,
+            'level': level,
+            'position': position,
+            'filepath': filepath,
+            'timestamp': timestamp,
+            'file_size': file_size
+        })
 
-        # Update camera status
-        db.execute('''
-            INSERT OR REPLACE INTO camera_status
-            (camera_id, unit_id, last_image_timestamp, total_images, status, updated_at)
-            VALUES (?, ?, ?,
-                COALESCE((SELECT total_images FROM camera_status WHERE camera_id = ?), 0) + 1,
-                'online', CURRENT_TIMESTAMP)
-        ''', (camera_id, unit_id, timestamp, camera_id))
+        # Log queued upload
+        print(f"Camera {camera_id} upload queued at {timestamp} (queue size: {camera_upload_queue.qsize()})")
 
-        db.commit()
-
-        # Log successful upload
-        print(f"Camera {camera_id} uploaded image at {timestamp}")
-
+        # Return immediately - DB write happens async
         return jsonify({
             'message': 'Image uploaded successfully',
             'camera_id': camera_id,
             'timestamp': timestamp,
-            'image_url': f'/camera_images/{filename}'
+            'image_url': f'/camera_images/{filename}',
+            'queued': True
         })
 
     return jsonify({'error': 'Invalid file type'}), 400
@@ -636,6 +765,32 @@ def serve_camera_image(filename):
     """Serve camera images"""
     from flask import send_from_directory
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+@app.route('/cameras/latest', methods=['GET'])
+def get_latest_camera_image():
+    """Get the most recently uploaded camera image"""
+    db = get_db()
+
+    image = db.execute('''
+        SELECT camera_id, unit_id, level, position, image_path, timestamp, file_size
+        FROM camera_images
+        ORDER BY timestamp DESC
+        LIMIT 1
+    ''').fetchone()
+
+    if not image:
+        return jsonify({'error': 'No images found'}), 404
+
+    return jsonify({
+        'camera_id': image['camera_id'],
+        'unit_id': image['unit_id'],
+        'level': image['level'],
+        'position': image['position'],
+        'timestamp': image['timestamp'],
+        'file_size': image['file_size'],
+        'image_url': f'/camera_images/{os.path.basename(image["image_path"])}'
+    })
+
 
 @app.route('/cameras/status', methods=['GET'])
 def get_all_cameras_status():
@@ -875,11 +1030,59 @@ def export_images_zip():
         headers={'Content-Disposition': f'attachment; filename=camera-images-{unit}-{date_range}.zip'}
     )
 
+# Settings endpoints
+SETTINGS_FILE = 'settings.json'
+
+def load_settings():
+    """Load settings from file"""
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_settings(settings):
+    """Save settings to file"""
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+@app.route('/settings/ranges', methods=['GET'])
+def get_ranges():
+    """Get safe ranges for sensors"""
+    settings = load_settings()
+    return jsonify({"ranges": settings.get('ranges', {})})
+
+@app.route('/settings/ranges', methods=['POST'])
+def update_ranges():
+    """Update safe ranges for sensors"""
+    data = request.get_json()
+    settings = load_settings()
+    settings['ranges'] = data.get('ranges', {})
+    save_settings(settings)
+    return jsonify({"message": "Ranges saved successfully", "ranges": settings['ranges']})
+
+@app.route('/settings/clear-data', methods=['POST'])
+def clear_data():
+    """Clear sensor readings and historical data from the database"""
+    db = get_db()
+    try:
+        # Clear sensor readings
+        db.execute('DELETE FROM sensor_readings')
+        # Clear room sensors
+        db.execute('DELETE FROM room_sensors')
+        # Clear camera images table (but not actual image files)
+        db.execute('DELETE FROM camera_images')
+        # Reset camera status
+        db.execute('DELETE FROM camera_status')
+        db.commit()
+        return jsonify({"message": "Database cleared successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # WebSocket events
 @socketio.on('connect')
 def handle_connect():
     print(f'Client connected: {request.sid}')
-    emit('connected', {'data': 'Connected to hydroponics system'})
+    emit('connected', {'data': 'Connected to NeuralKissan system'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -1002,9 +1205,83 @@ def simulate_sensor_updates():
 
         time.sleep(30)  # Update every 30 seconds
 
+
+def camera_upload_worker(worker_id):
+    """Background worker to process camera upload queue - handles DB writes sequentially"""
+    print(f"Camera upload worker {worker_id} started")
+
+    while True:
+        try:
+            # Block until an item is available
+            upload_data = camera_upload_queue.get()
+
+            if upload_data is None:  # Shutdown signal
+                break
+
+            # Get a direct database connection (not tied to request context)
+            db = get_db_direct()
+
+            try:
+                camera_id = upload_data['camera_id']
+                unit_id = upload_data['unit_id']
+                level = upload_data['level']
+                position = upload_data['position']
+                filepath = upload_data['filepath']
+                timestamp = upload_data['timestamp']
+                file_size = upload_data['file_size']
+
+                # Insert image record
+                db.execute('''
+                    INSERT INTO camera_images
+                    (camera_id, unit_id, level, position, image_path, timestamp, file_size)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (camera_id, unit_id, level, position, filepath, timestamp, file_size))
+
+                # Update camera status with proper locking
+                db.execute('''
+                    INSERT INTO camera_status (camera_id, unit_id, last_image_timestamp, total_images, status, updated_at)
+                    VALUES (?, ?, ?, 1, 'online', CURRENT_TIMESTAMP)
+                    ON CONFLICT(camera_id) DO UPDATE SET
+                        last_image_timestamp = excluded.last_image_timestamp,
+                        total_images = total_images + 1,
+                        status = 'online',
+                        updated_at = CURRENT_TIMESTAMP
+                ''', (camera_id, unit_id, timestamp))
+
+                db.commit()
+                print(f"Worker {worker_id}: Saved camera {camera_id} image to DB")
+
+                # Emit WebSocket event to notify frontend of new image
+                socketio.emit('camera_image_uploaded', {
+                    'camera_id': camera_id,
+                    'unit_id': unit_id,
+                    'level': level,
+                    'position': position,
+                    'timestamp': timestamp,
+                    'image_url': f'/camera_images/{os.path.basename(filepath)}'
+                })
+
+            except Exception as e:
+                print(f"Worker {worker_id}: Error saving to DB: {e}")
+                db.rollback()
+            finally:
+                db.close()
+                camera_upload_queue.task_done()
+
+        except Exception as e:
+            print(f"Worker {worker_id}: Queue error: {e}")
+
+
 if __name__ == '__main__':
     # Initialize database
     init_db()
+
+    # Start camera upload queue workers (handles 20+ concurrent uploads)
+    for i in range(QUEUE_WORKER_COUNT):
+        worker_thread = threading.Thread(target=camera_upload_worker, args=(i,))
+        worker_thread.daemon = True
+        worker_thread.start()
+    print(f"Started {QUEUE_WORKER_COUNT} camera upload workers")
 
     # Start background sensor simulation
     sensor_thread = threading.Thread(target=simulate_sensor_updates)

@@ -16,6 +16,12 @@ const Container = styled.div`
     if (props.controlMode === 'timer') return props.theme.colors.primary;
     return 'transparent';
   }};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.md};
+    flex-wrap: wrap;
+    gap: ${props => props.theme.spacing.sm};
+  }
 `;
 
 const LabelContainer = styled.div`
@@ -55,6 +61,49 @@ const ToggleContainer = styled.div`
   display: flex;
   align-items: center;
   gap: ${props => props.theme.spacing.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    gap: ${props => props.theme.spacing.sm};
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+`;
+
+const ModeToggleButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: ${props => props.theme.spacing.xs};
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+  border-radius: ${props => props.theme.borderRadius.md};
+  font-size: ${props => props.theme.fontSizes.xs};
+  font-weight: 600;
+  cursor: pointer;
+  transition: ${props => props.theme.transitions.default};
+  border: 1px solid ${props => props.mode === 'manual'
+    ? props.theme.colors.warning
+    : props.theme.colors.primary};
+  background: ${props => props.mode === 'manual'
+    ? props.theme.colors.warning + '15'
+    : props.theme.colors.primary + '15'};
+  color: ${props => props.mode === 'manual'
+    ? props.theme.colors.warning
+    : props.theme.colors.primary};
+
+  &:hover {
+    background: ${props => props.mode === 'manual'
+      ? props.theme.colors.warning + '30'
+      : props.theme.colors.primary + '30'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.sm};
+    min-height: 36px;
+  }
 `;
 
 const StateText = styled.span`
@@ -79,6 +128,7 @@ const ToggleSwitch = styled.button`
   border: none;
   cursor: pointer;
   outline: none;
+  flex-shrink: 0;
 
   &:hover {
     background: ${props => props.isOn
@@ -103,6 +153,17 @@ const ToggleSwitch = styled.button`
     transition: ${props => props.theme.transitions.default};
     box-shadow: ${props => props.theme.shadows.sm};
   }
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    width: 56px;
+    height: 28px;
+
+    &::after {
+      width: 24px;
+      height: 24px;
+      left: ${props => props.isOn ? '30px' : '2px'};
+    }
+  }
 `;
 
 const LoadingSpinner = styled.div`
@@ -123,12 +184,14 @@ const ToggleRelay = ({
   label,
   state,
   onChange,
+  onModeChange,
   icon,
   disabled = false,
   controlMode = 'manual', // 'manual' or 'timer'
   scheduleInfo = null
 }) => {
   const [loading, setLoading] = useState(false);
+  const [modeLoading, setModeLoading] = useState(false);
   const isOn = state === 'ON';
 
   const handleToggle = async () => {
@@ -145,17 +208,31 @@ const ToggleRelay = ({
     }
   };
 
+  const handleModeToggle = async () => {
+    if (disabled || modeLoading || !onModeChange) return;
+
+    setModeLoading(true);
+    try {
+      const newMode = controlMode === 'manual' ? 'timer' : 'manual';
+      await onModeChange(newMode);
+    } catch (error) {
+      console.error('Error changing mode:', error);
+    } finally {
+      setModeLoading(false);
+    }
+  };
+
   const getModeDisplay = () => {
     if (controlMode === 'timer') {
       return {
         icon: '⏰',
-        text: 'Timer Control',
+        text: 'Timer',
         detail: scheduleInfo ? `${scheduleInfo.on} - ${scheduleInfo.off}` : 'Scheduled'
       };
     }
     return {
       icon: '🎛️',
-      text: 'Manual Control',
+      text: 'Manual',
       detail: 'Override Active'
     };
   };
@@ -175,6 +252,14 @@ const ToggleRelay = ({
         </ControlModeIndicator>
       </LabelContainer>
       <ToggleContainer>
+        <ModeToggleButton
+          mode={controlMode}
+          onClick={handleModeToggle}
+          disabled={disabled || modeLoading}
+          title={`Switch to ${controlMode === 'manual' ? 'Timer' : 'Manual'} mode`}
+        >
+          {modeLoading ? '...' : controlMode === 'manual' ? '⏰ Timer' : '🎛️ Manual'}
+        </ModeToggleButton>
         <StateText state={state}>{state}</StateText>
         {loading ? (
           <LoadingSpinner />
@@ -183,7 +268,7 @@ const ToggleRelay = ({
             isOn={isOn}
             onClick={handleToggle}
             disabled={disabled}
-            title={`Turn ${isOn ? 'OFF' : 'ON'} ${label} (switches to manual mode)`}
+            title={`Turn ${isOn ? 'OFF' : 'ON'} ${label}`}
           />
         )}
       </ToggleContainer>

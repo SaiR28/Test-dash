@@ -16,11 +16,19 @@ export const SocketProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
   const [sensorData, setSensorData] = useState({});
   const [relayData, setRelayData] = useState({});
+  const [latestCameraImage, setLatestCameraImage] = useState(null);
 
   useEffect(() => {
     // Connect to Socket.IO server
-    const newSocket = io('http://localhost:5000', {
-      transports: ['websocket', 'polling']
+    // In production (Docker), connect to current host; nginx proxies to backend
+    // In development, connect to localhost:5000
+    const socketUrl = process.env.NODE_ENV === 'production'
+      ? window.location.origin
+      : 'http://localhost:5000';
+
+    const newSocket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      path: '/socket.io/'
     });
 
     newSocket.on('connect', () => {
@@ -50,6 +58,11 @@ export const SocketProvider = ({ children }) => {
       console.log('Server message:', data);
     });
 
+    newSocket.on('camera_image_uploaded', (data) => {
+      console.log('Camera image uploaded:', data);
+      setLatestCameraImage(data);
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -74,6 +87,7 @@ export const SocketProvider = ({ children }) => {
     connected,
     sensorData,
     relayData,
+    latestCameraImage,
     joinUnit,
     leaveUnit
   };

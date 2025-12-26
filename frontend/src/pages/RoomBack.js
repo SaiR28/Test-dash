@@ -6,24 +6,23 @@ import { roomAPI, apiUtils } from '../services/api';
 const Container = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${props => props.theme.spacing.xl};
+  gap: ${props => props.theme.spacing.md};
 `;
 
 const Section = styled.section`
   background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.lg};
-  padding: ${props => props.theme.spacing.xl};
+  border-radius: ${props => props.theme.borderRadius.md};
+  padding: ${props => props.theme.spacing.md};
   box-shadow: ${props => props.theme.shadows.sm};
 `;
 
 const SectionTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: ${props => props.theme.colors.text};
-  margin-bottom: ${props => props.theme.spacing.lg};
-  display: flex;
-  align-items: center;
-  gap: ${props => props.theme.spacing.sm};
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-bottom: ${props => props.theme.spacing.sm};
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 `;
 
 const ACScheduleTable = styled.div`
@@ -31,23 +30,29 @@ const ACScheduleTable = styled.div`
   border-radius: ${props => props.theme.borderRadius.md};
   overflow: hidden;
   border: 1px solid ${props => props.theme.colors.border};
+  max-height: 400px;
+  overflow-y: auto;
 `;
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
+  grid-template-columns: 80px 1fr 100px;
   background: ${props => props.theme.colors.primary};
   color: ${props => props.theme.colors.textInverse};
   font-weight: 600;
-  padding: ${props => props.theme.spacing.md};
+  font-size: 0.8rem;
+  padding: ${props => props.theme.spacing.sm} ${props => props.theme.spacing.md};
+  position: sticky;
+  top: 0;
 `;
 
 const TableRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
-  padding: ${props => props.theme.spacing.md};
+  grid-template-columns: 80px 1fr 100px;
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.md};
   border-bottom: 1px solid ${props => props.theme.colors.border};
   align-items: center;
+  font-size: 0.85rem;
 
   &:last-child {
     border-bottom: none;
@@ -59,24 +64,30 @@ const TableRow = styled.div`
 `;
 
 const TempSelect = styled.select`
-  padding: ${props => props.theme.spacing.sm};
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
   border: 1px solid ${props => props.theme.colors.border};
   border-radius: ${props => props.theme.borderRadius.sm};
   background: ${props => props.theme.colors.surface};
   color: ${props => props.theme.colors.text};
-  font-size: 0.875rem;
+  font-size: 0.85rem;
+`;
+
+const ButtonRow = styled.div`
+  display: flex;
+  gap: ${props => props.theme.spacing.sm};
+  margin-top: ${props => props.theme.spacing.md};
 `;
 
 const SaveButton = styled.button`
-  padding: ${props => props.theme.spacing.md} ${props => props.theme.spacing.lg};
+  padding: ${props => props.theme.spacing.sm} ${props => props.theme.spacing.md};
   background: ${props => props.theme.colors.primary};
   color: ${props => props.theme.colors.textInverse};
   border: none;
   border-radius: ${props => props.theme.borderRadius.md};
   font-weight: 600;
+  font-size: 0.85rem;
   cursor: pointer;
-  transition: ${props => props.theme.transitions.default};
-  margin-top: ${props => props.theme.spacing.lg};
+  transition: ${props => props.theme.transitions.fast};
 
   &:hover {
     background: ${props => props.theme.colors.primaryHover};
@@ -90,17 +101,16 @@ const SaveButton = styled.button`
 
 const LoadingMessage = styled.div`
   text-align: center;
-  padding: ${props => props.theme.spacing.xl};
+  padding: ${props => props.theme.spacing.lg};
   color: ${props => props.theme.colors.textSecondary};
 `;
 
 const ErrorMessage = styled.div`
   background: ${props => props.theme.colors.danger}10;
   color: ${props => props.theme.colors.danger};
-  padding: ${props => props.theme.spacing.lg};
+  padding: ${props => props.theme.spacing.md};
   border-radius: ${props => props.theme.borderRadius.md};
   border: 1px solid ${props => props.theme.colors.danger}30;
-  margin-bottom: ${props => props.theme.spacing.lg};
 `;
 
 const RoomBack = () => {
@@ -133,7 +143,7 @@ const RoomBack = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -169,7 +179,6 @@ const RoomBack = () => {
 
   return (
     <Container>
-      {/* Environmental Sensors */}
       <Section>
         <SectionTitle>🌡️ Environmental Monitoring</SectionTitle>
         {sensorData && (
@@ -208,9 +217,9 @@ const RoomBack = () => {
               icon="🎯"
             />
             <SensorCard
-              title="Air Quality (IAQ)"
+              title="Air Quality"
               value={sensorData.bme?.iaq}
-              unit=""
+              unit="IAQ"
               timestamp={sensorData.timestamp}
               ranges={{
                 warning: { min: 0, max: 200 },
@@ -230,7 +239,7 @@ const RoomBack = () => {
               icon="🌿"
             />
             <SensorCard
-              title="AC Set Temperature"
+              title="AC Set Temp"
               value={sensorData.ac?.current_set_temp}
               unit="°C"
               timestamp={sensorData.timestamp}
@@ -241,9 +250,8 @@ const RoomBack = () => {
         )}
       </Section>
 
-      {/* AC Control */}
       <Section>
-        <SectionTitle>❄️ AC Schedule Control</SectionTitle>
+        <SectionTitle>❄️ AC Schedule</SectionTitle>
         <ACScheduleTable>
           <TableHeader>
             <div>Hour</div>
@@ -270,12 +278,14 @@ const RoomBack = () => {
             );
           })}
         </ACScheduleTable>
-        <SaveButton
-          onClick={handleSaveSchedule}
-          disabled={!hasChanges || saving}
-        >
-          {saving ? 'Saving...' : 'Save AC Schedule'}
-        </SaveButton>
+        <ButtonRow>
+          <SaveButton
+            onClick={handleSaveSchedule}
+            disabled={!hasChanges || saving}
+          >
+            {saving ? 'Saving...' : 'Save Schedule'}
+          </SaveButton>
+        </ButtonRow>
       </Section>
     </Container>
   );

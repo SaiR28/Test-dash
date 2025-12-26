@@ -1,424 +1,514 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import SensorCard from '../components/SensorCard';
-import IoTStatusIndicator from '../components/IoTStatusIndicator';
 import { useSocket } from '../contexts/SocketContext';
 import axios from 'axios';
 
 const Container = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${props => props.theme.spacing.xl};
-`;
-
-const Section = styled.section`
-  background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.lg};
-  padding: ${props => props.theme.spacing.xl};
-  box-shadow: ${props => props.theme.shadows.sm};
-`;
-
-const SectionTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: ${props => props.theme.colors.text};
-  margin-bottom: ${props => props.theme.spacing.lg};
-  display: flex;
-  align-items: center;
-  gap: ${props => props.theme.spacing.sm};
-`;
-
-const UnitsGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: ${props => props.theme.spacing.lg};
-`;
 
-const UnitCard = styled(Link)`
-  display: block;
-  background: ${props => props.theme.colors.background};
-  border-radius: ${props => props.theme.borderRadius.lg};
-  padding: ${props => props.theme.spacing.lg};
-  text-decoration: none;
-  color: inherit;
-  transition: ${props => props.theme.transitions.default};
-  border: 1px solid ${props => props.theme.colors.border};
-
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: ${props => props.theme.shadows.md};
-    border-color: ${props => props.theme.colors.primary};
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    gap: ${props => props.theme.spacing.md};
   }
 `;
 
-const UnitHeader = styled.div`
+/* Header with live status */
+const Header = styled.div`
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: ${props => props.theme.spacing.md};
-  gap: ${props => props.theme.spacing.sm};
+  background: ${props => props.theme.colors.surface};
+  border-radius: ${props => props.theme.borderRadius.lg};
+  padding: ${props => props.theme.spacing.lg};
+  box-shadow: ${props => props.theme.shadows.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.md};
+    flex-direction: column;
+    gap: ${props => props.theme.spacing.md};
+    align-items: stretch;
+  }
 `;
 
-const UnitTitleContainer = styled.div`
+const LiveBadge = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: ${props => props.theme.spacing.xs};
-`;
-
-const UnitTitle = styled.h3`
-  font-size: ${props => props.theme.fontSizes.lg};
-  font-weight: ${props => props.theme.fontWeights.semibold};
-  color: ${props => props.theme.colors.text};
-  margin: 0;
-`;
-
-const UnitType = styled.span`
-  font-size: ${props => props.theme.fontSizes.xs};
-  color: ${props => props.theme.colors.textMuted};
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-`;
-
-const StatusContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: ${props => props.theme.spacing.xs};
-`;
-
-const StatusBadge = styled.span`
-  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: ${props => props.connected
+    ? props.theme.colors.success + '15'
+    : props.theme.colors.danger + '15'};
+  padding: 10px 20px;
   border-radius: ${props => props.theme.borderRadius.full};
-  font-size: ${props => props.theme.fontSizes.xs};
-  font-weight: ${props => props.theme.fontWeights.semibold};
+  border: 2px solid ${props => props.connected
+    ? props.theme.colors.success
+    : props.theme.colors.danger};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: 8px 16px;
+  }
+`;
+
+const LiveDot = styled.span`
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: ${props => props.connected
+    ? props.theme.colors.success
+    : props.theme.colors.danger};
+  box-shadow: ${props => props.connected
+    ? `0 0 10px ${props.theme.colors.success}`
+    : 'none'};
+  animation: ${props => props.connected ? 'pulse 2s infinite' : 'none'};
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.9); }
+  }
+`;
+
+const LiveText = styled.span`
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${props => props.connected
+    ? props.theme.colors.success
+    : props.theme.colors.danger};
+`;
+
+const RackCount = styled.div`
+  text-align: right;
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: ${props => props.theme.spacing.sm};
+  }
+`;
+
+const RackNumber = styled.div`
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: ${props => props.theme.colors.text};
+  line-height: 1;
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 1.75rem;
+  }
+`;
+
+const RackLabel = styled.div`
+  font-size: 0.85rem;
+  color: ${props => props.theme.colors.textMuted};
+  font-weight: 500;
+`;
+
+/* Section styling */
+const Section = styled.section`
+  background: ${props => props.theme.colors.surface};
+  border-radius: ${props => props.theme.borderRadius.lg};
+  padding: ${props => props.theme.spacing.lg};
+  box-shadow: ${props => props.theme.shadows.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.md};
+    border-radius: ${props => props.theme.borderRadius.md};
+  }
+`;
+
+const SectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: ${props => props.theme.spacing.md};
+`;
+
+const SectionTitle = styled.h2`
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: ${props => props.theme.colors.text};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const SectionIcon = styled.span`
+  font-size: 1.3rem;
+`;
+
+/* Hydro Units Grid */
+const UnitsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: ${props => props.theme.spacing.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: ${props => props.theme.spacing.sm};
+  }
+
+  @media (max-width: 400px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const UnitCard = styled(Link)`
+  background: linear-gradient(135deg,
+    ${props => props.theme.colors.background} 0%,
+    ${props => props.theme.colors.surface} 100%);
+  border-radius: ${props => props.theme.borderRadius.lg};
+  padding: ${props => props.theme.spacing.md};
+  text-decoration: none;
+  border: 2px solid ${props => {
+    if (props.status === 'critical') return props.theme.colors.danger;
+    if (props.status === 'warning') return props.theme.colors.warning;
+    return props.theme.colors.success + '50';
+  }};
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: ${props => {
+      if (props.status === 'critical') return props.theme.colors.danger;
+      if (props.status === 'warning') return props.theme.colors.warning;
+      return props.theme.colors.success;
+    }};
+  }
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: ${props => props.theme.shadows.lg};
+    border-color: ${props => props.theme.colors.primary};
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.sm};
+
+    &:hover {
+      transform: none;
+    }
+
+    &:active {
+      transform: scale(0.98);
+    }
+  }
+`;
+
+const UnitName = styled.div`
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: ${props => props.theme.colors.text};
+  margin-bottom: ${props => props.theme.spacing.sm};
+`;
+
+const UnitStatus = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: ${props => getStatusColor(props.status, props.theme)};
-  color: white;
+  padding: 3px 8px;
+  border-radius: ${props => props.theme.borderRadius.full};
+  margin-bottom: ${props => props.theme.spacing.sm};
+  background: ${props => {
+    if (props.status === 'critical') return props.theme.colors.danger + '20';
+    if (props.status === 'warning') return props.theme.colors.warning + '20';
+    return props.theme.colors.success + '20';
+  }};
+  color: ${props => {
+    if (props.status === 'critical') return props.theme.colors.danger;
+    if (props.status === 'warning') return props.theme.colors.warning;
+    return props.theme.colors.success;
+  }};
 `;
 
 const UnitMetrics = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: ${props => props.theme.spacing.sm};
+  display: flex;
+  gap: ${props => props.theme.spacing.md};
 `;
 
-const MetricItem = styled.div`
+const UnitMetric = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: ${props => props.theme.spacing.sm};
-  background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.md};
-`;
-
-const MetricLabel = styled.span`
-  font-size: 0.75rem;
-  color: ${props => props.theme.colors.textSecondary};
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 `;
 
 const MetricValue = styled.span`
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: ${props => props.theme.colors.text};
+`;
+
+const MetricLabel = styled.span`
+  font-size: 0.65rem;
+  color: ${props => props.theme.colors.textMuted};
+  text-transform: uppercase;
+  font-weight: 500;
+`;
+
+/* Room Cards */
+const RoomGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: ${props => props.theme.spacing.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    grid-template-columns: 1fr;
+    gap: ${props => props.theme.spacing.sm};
+  }
+`;
+
+const RoomCard = styled.div`
+  background: linear-gradient(135deg,
+    ${props => props.theme.colors.background} 0%,
+    ${props => props.theme.colors.surface} 100%);
+  border-radius: ${props => props.theme.borderRadius.lg};
+  padding: ${props => props.theme.spacing.md};
+  border: 1px solid ${props => props.theme.colors.border};
+`;
+
+const RoomHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: ${props => props.theme.spacing.md};
+  padding-bottom: ${props => props.theme.spacing.sm};
+  border-bottom: 1px solid ${props => props.theme.colors.border};
+`;
+
+const RoomIcon = styled.span`
+  font-size: 1.2rem;
+`;
+
+const RoomName = styled.span`
   font-size: 1rem;
   font-weight: 600;
   color: ${props => props.theme.colors.text};
 `;
 
-const LoadingMessage = styled.div`
-  text-align: center;
-  padding: ${props => props.theme.spacing.xl};
-  color: ${props => props.theme.colors.textSecondary};
+const RoomMetrics = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: ${props => props.theme.spacing.sm};
 `;
 
-function getStatusColor(status, theme) {
-  switch (status) {
-    case 'normal':
-      return theme.colors.success;
-    case 'warning':
-      return theme.colors.warning;
-    case 'critical':
-      return theme.colors.danger;
-    default:
-      return theme.colors.textMuted;
+const RoomMetric = styled.div`
+  display: flex;
+  flex-direction: column;
+  padding: ${props => props.theme.spacing.sm};
+  background: ${props => props.theme.colors.surface};
+  border-radius: ${props => props.theme.borderRadius.md};
+`;
+
+const RoomMetricValue = styled.span`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: ${props => props.theme.colors.text};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 1.25rem;
   }
-}
+`;
 
-function getUnitStatus(sensorData) {
-  if (!sensorData) return 'unknown';
+const RoomMetricLabel = styled.span`
+  font-size: 0.7rem;
+  color: ${props => props.theme.colors.textMuted};
+  text-transform: uppercase;
+  font-weight: 500;
+`;
 
-  const { reservoir } = sensorData;
-  if (!reservoir) return 'unknown';
+const LoadingContainer = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: ${props => props.theme.colors.textMuted};
+  font-size: 1rem;
+`;
 
-  // Check critical ranges
-  if (reservoir.ph < 5.5 || reservoir.ph > 7.5) return 'critical';
-  if (reservoir.tds < 500 || reservoir.tds > 1500) return 'critical';
-  if (reservoir.water_level < 20) return 'critical';
+const hydroUnits = [
+  { id: 'DWC1', name: 'DWC 1' },
+  { id: 'DWC2', name: 'DWC 2' },
+  { id: 'NFT', name: 'NFT' },
+  { id: 'AERO', name: 'Aeroponic' },
+  { id: 'TROUGH', name: 'Trough' }
+];
 
-  // Check warning ranges
-  if (reservoir.ph < 6.0 || reservoir.ph > 7.0) return 'warning';
-  if (reservoir.tds < 700 || reservoir.tds > 1300) return 'warning';
-  if (reservoir.water_level < 50) return 'warning';
-
+function getUnitStatus(data) {
+  if (!data?.reservoir) return 'offline';
+  const { reservoir } = data;
+  if (reservoir.ph < 5.5 || reservoir.ph > 7.5 || reservoir.water_level < 20) return 'critical';
+  if (reservoir.ph < 6.0 || reservoir.ph > 7.0 || reservoir.water_level < 50) return 'warning';
   return 'normal';
 }
 
 const Dashboard = () => {
   const [hydroUnitsData, setHydroUnitsData] = useState({});
   const [roomData, setRoomData] = useState({ front: null, back: null });
-  const [cameraStats, setCameraStats] = useState({ total: 0, online: 0 });
   const [loading, setLoading] = useState(true);
   const { connected } = useSocket();
-
-  const hydroUnits = [
-    { id: 'DWC1', name: 'Deep Water Culture 1', type: 'Deep Water Culture', icon: '💧' },
-    { id: 'DWC2', name: 'Deep Water Culture 2', type: 'Deep Water Culture', icon: '💧' },
-    { id: 'NFT', name: 'Nutrient Film Technique', type: 'NFT System', icon: '🌊' },
-    { id: 'AERO', name: 'Aeroponic System', type: 'Aeroponic', icon: '💨' },
-    { id: 'TROUGH', name: 'Trough Based System', type: 'Trough System', icon: '🔄' }
-  ];
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setLoading(true);
-
-        // Fetch hydro units data
         const hydroPromises = hydroUnits.map(async (unit) => {
           const response = await axios.get(`/units/${unit.id}/sensors`);
           return { unitId: unit.id, data: response.data };
         });
 
-        const hydroResults = await Promise.all(hydroPromises);
+        const [hydroResults, frontResponse, backResponse] = await Promise.all([
+          Promise.all(hydroPromises),
+          axios.get('/room/front/sensors'),
+          axios.get('/room/back/sensors')
+        ]);
+
         const hydroData = {};
         hydroResults.forEach(({ unitId, data }) => {
           hydroData[unitId] = data;
         });
         setHydroUnitsData(hydroData);
 
-        // Fetch room data
-        const [frontResponse, backResponse] = await Promise.all([
-          axios.get('/room/front/sensors'),
-          axios.get('/room/back/sensors')
-        ]);
-
         setRoomData({
           front: frontResponse.data,
           back: backResponse.data
         });
 
-        // Fetch camera statistics
-        let totalCameras = 0;
-        let onlineCameras = 0;
-
-        for (const unit of hydroUnits) {
-          try {
-            const cameraResponse = await axios.get(`/cameras/${unit.id}`);
-            const cameras = cameraResponse.data.cameras || [];
-            totalCameras += cameras.length;
-
-            // Count online cameras (images received within 5 minutes)
-            const now = Math.floor(Date.now() / 1000);
-            cameras.forEach(camera => {
-              if (camera.last_image_timestamp && (now - camera.last_image_timestamp) <= 300) {
-                onlineCameras++;
-              }
-            });
-          } catch (error) {
-            console.warn(`Error fetching cameras for ${unit.id}:`, error);
-          }
-        }
-
-        setCameraStats({ total: totalCameras, online: onlineCameras });
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        console.error('Error fetching data:', error);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
-
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
 
   if (loading) {
-    return <LoadingMessage>Loading dashboard data...</LoadingMessage>;
+    return <LoadingContainer>Loading dashboard...</LoadingContainer>;
   }
+
+  const unitsOnline = Object.keys(hydroUnitsData).length;
 
   return (
     <Container>
-      {/* System Overview */}
-      <Section>
-        <SectionTitle>🌿 System Overview</SectionTitle>
-        <div className="card-grid">
-          <SensorCard
-            title="Total Systems"
-            value={hydroUnits.length}
-            unit="systems"
-            status="normal"
-            icon="🌱"
-          />
-          <SensorCard
-            title="Systems Online"
-            value={Object.keys(hydroUnitsData).length}
-            unit="active"
-            status={Object.keys(hydroUnitsData).length === hydroUnits.length ? 'normal' : 'warning'}
-            icon="✅"
-          />
-          <SensorCard
-            title="Average pH"
-            value={
-              Object.values(hydroUnitsData).length > 0
-                ? Object.values(hydroUnitsData)
-                    .reduce((sum, unit) => sum + (unit.reservoir?.ph || 0), 0) /
-                  Object.values(hydroUnitsData).length
-                : 0
-            }
-            unit=""
-            status="normal"
-            icon="⚗️"
-          />
-          <SensorCard
-            title="Cameras Online"
-            value={`${cameraStats.online}/${cameraStats.total}`}
-            unit="cameras"
-            status={cameraStats.online === cameraStats.total ? 'normal' :
-                   cameraStats.online > 0 ? 'warning' : 'critical'}
-            icon="📷"
-          />
-          <SensorCard
-            title="WebSocket"
-            value={connected ? 'Connected' : 'Disconnected'}
-            status={connected ? 'normal' : 'critical'}
-            icon="📡"
-          />
-        </div>
-      </Section>
+      {/* Header */}
+      <Header>
+        <LiveBadge connected={connected}>
+          <LiveDot connected={connected} />
+          <LiveText connected={connected}>
+            {connected ? 'System Online' : 'Offline'}
+          </LiveText>
+        </LiveBadge>
+        <RackCount>
+          <RackNumber>{unitsOnline}/{hydroUnits.length}</RackNumber>
+          <RackLabel>Racks Active</RackLabel>
+        </RackCount>
+      </Header>
 
-      {/* Hydro Units */}
+      {/* Hydroponic Units */}
       <Section>
-        <SectionTitle>🌱 Hydroponic Systems</SectionTitle>
+        <SectionHeader>
+          <SectionTitle>
+            <SectionIcon>🌱</SectionIcon>
+            Hydroponic Units
+          </SectionTitle>
+        </SectionHeader>
         <UnitsGrid>
           {hydroUnits.map((unit) => {
             const data = hydroUnitsData[unit.id];
             const status = getUnitStatus(data);
 
             return (
-              <UnitCard key={unit.id} to={`/hydro-units/${unit.id}`}>
-                <UnitHeader>
-                  <UnitTitleContainer>
-                    <UnitTitle>{unit.icon} {unit.id}</UnitTitle>
-                    <UnitType>{unit.type}</UnitType>
-                  </UnitTitleContainer>
-                  <StatusContainer>
-                    <IoTStatusIndicator
-                      unitId={unit.id}
-                      timestamp={data?.timestamp}
-                      compact={false}
-                    />
-                    <StatusBadge status={status}>{status}</StatusBadge>
-                  </StatusContainer>
-                </UnitHeader>
-
-                {data ? (
-                  <UnitMetrics>
-                    <MetricItem>
-                      <MetricLabel>pH</MetricLabel>
-                      <MetricValue>{data.reservoir?.ph?.toFixed(1) || 'N/A'}</MetricValue>
-                    </MetricItem>
-                    <MetricItem>
-                      <MetricLabel>TDS</MetricLabel>
-                      <MetricValue>{data.reservoir?.tds || 'N/A'}</MetricValue>
-                    </MetricItem>
-                    <MetricItem>
-                      <MetricLabel>Water Temp</MetricLabel>
-                      <MetricValue>{data.reservoir?.water_temp?.toFixed(1) || 'N/A'}°C</MetricValue>
-                    </MetricItem>
-                    <MetricItem>
-                      <MetricLabel>Water Level</MetricLabel>
-                      <MetricValue>{data.reservoir?.water_level || 'N/A'}%</MetricValue>
-                    </MetricItem>
-                  </UnitMetrics>
-                ) : (
-                  <LoadingMessage>No data available</LoadingMessage>
-                )}
+              <UnitCard key={unit.id} to={`/hydro-units/${unit.id}`} status={status}>
+                <UnitName>{unit.name}</UnitName>
+                <UnitStatus status={status}>
+                  {status === 'normal' ? '● Healthy' : status === 'warning' ? '● Warning' : '● Critical'}
+                </UnitStatus>
+                <UnitMetrics>
+                  <UnitMetric>
+                    <MetricValue>{data?.reservoir?.ph?.toFixed(1) || '-'}</MetricValue>
+                    <MetricLabel>pH</MetricLabel>
+                  </UnitMetric>
+                  <UnitMetric>
+                    <MetricValue>{data?.reservoir?.water_level || '-'}%</MetricValue>
+                    <MetricLabel>Water</MetricLabel>
+                  </UnitMetric>
+                </UnitMetrics>
               </UnitCard>
             );
           })}
         </UnitsGrid>
       </Section>
 
-      {/* Room Monitoring */}
+      {/* Environment */}
       <Section>
-        <SectionTitle>🏠 Room Monitoring</SectionTitle>
-        <div className="card-grid">
+        <SectionHeader>
+          <SectionTitle>
+            <SectionIcon>🌡️</SectionIcon>
+            Environment
+          </SectionTitle>
+        </SectionHeader>
+        <RoomGrid>
           {/* Front Room */}
-          {roomData.front && (
-            <>
-              <SensorCard
-                title="Front Room Temp"
-                value={roomData.front.bme?.temp}
-                unit="°C"
-                timestamp={roomData.front.timestamp}
-                ranges={{
-                  warning: { min: 18, max: 30 },
-                  critical: { min: 15, max: 35 }
-                }}
-                icon="🌡️"
-              />
-              <SensorCard
-                title="Front Room Humidity"
-                value={roomData.front.bme?.humidity}
-                unit="%"
-                timestamp={roomData.front.timestamp}
-                ranges={{
-                  warning: { min: 40, max: 80 },
-                  critical: { min: 30, max: 90 }
-                }}
-                icon="💧"
-              />
-              <SensorCard
-                title="Front Room CO2"
-                value={roomData.front.co2}
-                unit="ppm"
-                timestamp={roomData.front.timestamp}
-                ranges={{
-                  warning: { min: 300, max: 1200 },
-                  critical: { min: 250, max: 1500 }
-                }}
-                icon="🌬️"
-              />
-            </>
-          )}
+          <RoomCard>
+            <RoomHeader>
+              <RoomIcon>🏠</RoomIcon>
+              <RoomName>Front Room</RoomName>
+            </RoomHeader>
+            <RoomMetrics>
+              <RoomMetric>
+                <RoomMetricValue>{roomData.front?.bme?.temp?.toFixed(1) || '-'}°</RoomMetricValue>
+                <RoomMetricLabel>Temperature</RoomMetricLabel>
+              </RoomMetric>
+              <RoomMetric>
+                <RoomMetricValue>{roomData.front?.bme?.humidity?.toFixed(0) || '-'}%</RoomMetricValue>
+                <RoomMetricLabel>Humidity</RoomMetricLabel>
+              </RoomMetric>
+              <RoomMetric>
+                <RoomMetricValue>{roomData.front?.co2 || '-'}</RoomMetricValue>
+                <RoomMetricLabel>CO2 (ppm)</RoomMetricLabel>
+              </RoomMetric>
+            </RoomMetrics>
+          </RoomCard>
 
           {/* Back Room */}
-          {roomData.back && (
-            <>
-              <SensorCard
-                title="Back Room Temp"
-                value={roomData.back.bme?.temp}
-                unit="°C"
-                timestamp={roomData.back.timestamp}
-                ranges={{
-                  warning: { min: 18, max: 30 },
-                  critical: { min: 15, max: 35 }
-                }}
-                icon="🌡️"
-              />
-              <SensorCard
-                title="Back Room AC"
-                value={roomData.back.ac?.current_set_temp}
-                unit="°C"
-                status="normal"
-                timestamp={roomData.back.timestamp}
-                icon="❄️"
-              />
-            </>
-          )}
-        </div>
+          <RoomCard>
+            <RoomHeader>
+              <RoomIcon>🏢</RoomIcon>
+              <RoomName>Back Room</RoomName>
+            </RoomHeader>
+            <RoomMetrics>
+              <RoomMetric>
+                <RoomMetricValue>{roomData.back?.bme?.temp?.toFixed(1) || '-'}°</RoomMetricValue>
+                <RoomMetricLabel>Temperature</RoomMetricLabel>
+              </RoomMetric>
+              <RoomMetric>
+                <RoomMetricValue>{roomData.back?.bme?.humidity?.toFixed(0) || '-'}%</RoomMetricValue>
+                <RoomMetricLabel>Humidity</RoomMetricLabel>
+              </RoomMetric>
+              <RoomMetric>
+                <RoomMetricValue>{roomData.back?.co2 || '-'}</RoomMetricValue>
+                <RoomMetricLabel>CO2 (ppm)</RoomMetricLabel>
+              </RoomMetric>
+              <RoomMetric>
+                <RoomMetricValue>{roomData.back?.ac?.current_set_temp || '-'}°</RoomMetricValue>
+                <RoomMetricLabel>AC Set</RoomMetricLabel>
+              </RoomMetric>
+            </RoomMetrics>
+          </RoomCard>
+        </RoomGrid>
       </Section>
     </Container>
   );

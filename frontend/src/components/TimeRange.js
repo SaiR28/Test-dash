@@ -140,11 +140,44 @@ const StatusMessage = styled.div`
   margin-top: ${props => props.theme.spacing.sm};
 `;
 
+const ModeToggleButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: ${props => props.theme.spacing.xs};
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+  border-radius: ${props => props.theme.borderRadius.md};
+  font-size: ${props => props.theme.fontSizes.xs};
+  font-weight: 600;
+  cursor: pointer;
+  transition: ${props => props.theme.transitions.default};
+  border: 1px solid ${props => props.mode === 'manual'
+    ? props.theme.colors.warning
+    : props.theme.colors.primary};
+  background: ${props => props.mode === 'manual'
+    ? props.theme.colors.warning + '15'
+    : props.theme.colors.primary + '15'};
+  color: ${props => props.mode === 'manual'
+    ? props.theme.colors.warning
+    : props.theme.colors.primary};
+
+  &:hover {
+    background: ${props => props.mode === 'manual'
+      ? props.theme.colors.warning + '30'
+      : props.theme.colors.primary + '30'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
 const TimeRange = ({
   label,
   on,
   off,
   onUpdate,
+  onModeChange,
   icon,
   disabled = false,
   controlMode = 'timer'
@@ -152,6 +185,7 @@ const TimeRange = ({
   const [onTime, setOnTime] = useState(on || '08:00');
   const [offTime, setOffTime] = useState(off || '20:00');
   const [loading, setLoading] = useState(false);
+  const [modeLoading, setModeLoading] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
   const hasChanges = onTime !== on || offTime !== off;
@@ -175,6 +209,20 @@ const TimeRange = ({
     setOffTime(off || '20:00');
   };
 
+  const handleModeToggle = async () => {
+    if (disabled || modeLoading || !onModeChange) return;
+
+    setModeLoading(true);
+    try {
+      const newMode = controlMode === 'manual' ? 'timer' : 'manual';
+      await onModeChange(newMode);
+    } catch (error) {
+      console.error('Error changing mode:', error);
+    } finally {
+      setModeLoading(false);
+    }
+  };
+
   const getModeDisplay = () => {
     if (controlMode === 'manual') {
       return {
@@ -196,9 +244,19 @@ const TimeRange = ({
         <Label>
           {icon} {label} Schedule
         </Label>
-        <ControlModeStatus controlMode={controlMode}>
-          {modeDisplay.icon} {modeDisplay.text}
-        </ControlModeStatus>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ModeToggleButton
+            mode={controlMode}
+            onClick={handleModeToggle}
+            disabled={disabled || modeLoading}
+            title={`Switch to ${controlMode === 'manual' ? 'Timer' : 'Manual'} mode`}
+          >
+            {modeLoading ? '...' : controlMode === 'manual' ? '⏰ Timer' : '🎛️ Manual'}
+          </ModeToggleButton>
+          <ControlModeStatus controlMode={controlMode}>
+            {modeDisplay.icon} {modeDisplay.text}
+          </ControlModeStatus>
+        </div>
       </LabelContainer>
 
       <TimeInputContainer>
