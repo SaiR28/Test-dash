@@ -15,6 +15,11 @@ const Section = styled.section`
   border-radius: ${props => props.theme.borderRadius.md};
   padding: ${props => props.theme.spacing.md};
   box-shadow: ${props => props.theme.shadows.sm};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.sm};
+    border-radius: ${props => props.theme.borderRadius.sm};
+  }
 `;
 
 const SectionTitle = styled.h2`
@@ -28,9 +33,14 @@ const SectionTitle = styled.h2`
 
 const StatusGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: ${props => props.theme.spacing.sm};
   margin-bottom: ${props => props.theme.spacing.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    grid-template-columns: repeat(4, 1fr);
+    gap: ${props => props.theme.spacing.xs};
+  }
 `;
 
 const StatusCard = styled.div`
@@ -44,6 +54,10 @@ const StatusCard = styled.div`
     if (props.type === 'offline') return props.theme.colors.danger;
     return props.theme.colors.border;
   }};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.xs};
+  }
 `;
 
 const StatusNumber = styled.div`
@@ -55,6 +69,10 @@ const StatusNumber = styled.div`
     if (props.type === 'offline') return props.theme.colors.danger;
     return props.theme.colors.text;
   }};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 1.1rem;
+  }
 `;
 
 const StatusLabel = styled.div`
@@ -67,7 +85,11 @@ const StatusLabel = styled.div`
 const UnitSelector = styled.div`
   display: flex;
   gap: ${props => props.theme.spacing.sm};
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    gap: ${props => props.theme.spacing.xs};
+  }
 `;
 
 const UnitButton = styled.button`
@@ -86,12 +108,19 @@ const UnitButton = styled.button`
   font-size: 0.85rem;
   cursor: pointer;
   transition: ${props => props.theme.transitions.fast};
+  flex: 1;
+  min-width: 0;
 
   &:hover {
     border-color: ${props => props.theme.colors.primary};
     background: ${props => props.active
       ? props.theme.colors.primary
       : props.theme.colors.surfaceHover};
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+    font-size: 0.75rem;
   }
 `;
 
@@ -124,6 +153,12 @@ const LatestImageContainer = styled.div`
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  @media (max-width: 600px) {
+    flex: none;
+    width: 100%;
+    height: 180px;
   }
 `;
 
@@ -182,7 +217,7 @@ const NoImagePlaceholder = styled.div`
   font-size: 0.8rem;
 `;
 
-const HYDRO_UNITS = ['DWC1', 'DWC2', 'NFT', 'AERO', 'TROUGH'];
+const HYDRO_UNITS = ['DWC1', 'DWC2', 'DWC3', 'AERO', 'TROUGH'];
 
 const CameraMonitoring = () => {
   const [selectedUnit, setSelectedUnit] = useState('');

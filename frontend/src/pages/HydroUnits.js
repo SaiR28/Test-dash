@@ -132,7 +132,7 @@ const LoadingContainer = styled.div`
 const hydroUnits = [
   { id: 'DWC1', name: 'DWC 1', type: 'Deep Water Culture', icon: '💧' },
   { id: 'DWC2', name: 'DWC 2', type: 'Deep Water Culture', icon: '💧' },
-  { id: 'NFT', name: 'NFT', type: 'Nutrient Film Technique', icon: '🌊' },
+  { id: 'DWC3', name: 'DWC 3', type: 'Deep Water Culture', icon: '💧' },
   { id: 'AERO', name: 'Aeroponic', type: 'Aeroponic System', icon: '💨' },
   { id: 'TROUGH', name: 'Trough', type: 'Trough Based System', icon: '🔄' }
 ];

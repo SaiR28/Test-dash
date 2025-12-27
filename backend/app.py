@@ -6,13 +6,11 @@ import sqlite3
 import json
 import time
 import os
-import base64
 from datetime import datetime, timedelta
 import threading
-import random
 from queue import Queue
 from werkzeug.utils import secure_filename
-import time
+
 # Thread-safe queue for camera uploads (handles unlimited concurrent uploads)
 camera_upload_queue = Queue()
 QUEUE_WORKER_COUNT = 2  # Number of workers processing uploads
@@ -23,12 +21,15 @@ CORS(app, origins="*")
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Configuration
-DATABASE = 'hydroponics.db'
-UPLOAD_FOLDER = 'camera_images'
+DATABASE = os.environ.get('DATABASE_PATH', 'hydroponics.db')
+UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'camera_images')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-# Create upload directory
+# Create required directories
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+db_dir = os.path.dirname(DATABASE)
+if db_dir:
+    os.makedirs(db_dir, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -63,7 +64,7 @@ def init_db():
 
         # Enable WAL mode for better concurrent write performance
         db.execute('PRAGMA journal_mode=WAL')
-        db.execute('PRAGMA synchronous=NORMAL')  # Faster writes, still safe with WAL
+        db.execute('PRAGMA synchronous=NORMAL')
 
         # Hydro Units table
         db.execute('''
@@ -123,7 +124,6 @@ def init_db():
         try:
             db.execute('ALTER TABLE schedules ADD COLUMN control_mode TEXT DEFAULT "timer"')
         except sqlite3.OperationalError:
-            # Column already exists
             pass
 
         # Room sensors table
@@ -187,7 +187,7 @@ def init_db():
         units = [
             ('DWC1', 'Deep Water Culture 1', 'DWC'),
             ('DWC2', 'Deep Water Culture 2', 'DWC'),
-            ('NFT', 'Nutrient Film Technique', 'NFT'),
+            ('DWC3', 'Deep Water Culture 3', 'DWC'),
             ('AERO', 'Aeroponic System', 'Aeroponic'),
             ('TROUGH', 'Trough Based System', 'Trough')
         ]
@@ -196,9 +196,17 @@ def init_db():
             db.execute('INSERT OR IGNORE INTO hydro_units (unit_id, name, type) VALUES (?, ?, ?)', unit)
 
         # Insert default AC schedule (24 hours)
+        default_temps = [
+            16, 16, 16, 16, 16,  # 00-04
+            17, 18, 19, 20, 21,  # 05-09
+            22, 22, 22,          # 10-12
+            21, 21, 21,          # 13-15
+            20, 19, 18,          # 16-18
+            17, 16, 16, 16, 16   # 19-23
+        ]
         for hour in range(24):
             hour_str = f"{hour:02d}"
-            temp = 24  # Default temperature
+            temp = default_temps[hour]
             db.execute('INSERT OR IGNORE INTO ac_schedules (hour, temperature) VALUES (?, ?)', (hour_str, temp))
 
         db.commit()
@@ -215,7 +223,6 @@ def get_unit_sensors(unit_id):
     """Get latest sensor data for a hydro unit"""
     db = get_db()
 
-    # Get latest sensor reading
     sensor = db.execute('''
         SELECT * FROM sensor_readings
         WHERE unit_id = ?
@@ -224,27 +231,12 @@ def get_unit_sensors(unit_id):
     ''', (unit_id,)).fetchone()
 
     if not sensor:
-        # Return mock data if no readings
         return jsonify({
             "unit_id": unit_id,
-            "timestamp": int(time.time()),
-            "reservoir": {
-                "ph": 6.2,
-                "tds": 950,
-                "turbidity": 12,
-                "water_temp": 22.4,
-                "water_level": 78
-            },
-            "climate": {
-                "L11": {"temp": 24.1, "humidity": 70},
-                "L12": {"temp": 24.4, "humidity": 71},
-                "L21": {"temp": 23.9, "humidity": 69},
-                "L22": {"temp": 24.0, "humidity": 68},
-                "L31": {"temp": 24.2, "humidity": 72},
-                "L32": {"temp": 24.5, "humidity": 71},
-                "L41": {"temp": 25.1, "humidity": 74},
-                "L42": {"temp": 25.0, "humidity": 73}
-            }
+            "timestamp": None,
+            "reservoir": {"ph": None, "tds": None, "turbidity": None, "water_temp": None, "water_level": None},
+            "climate": {},
+            "status": "no_data"
         })
 
     climate_data = json.loads(sensor['climate_data']) if sensor['climate_data'] else {}
@@ -262,6 +254,214 @@ def get_unit_sensors(unit_id):
         "climate": climate_data
     })
 
+@app.route('/units/<unit_id>/sensors/history', methods=['GET'])
+def get_sensor_history(unit_id):
+    """Get historical sensor data for charts"""
+    db = get_db()
+
+    # Parameters
+    sensor = request.args.get('sensor', 'ph')  # ph, tds, turbidity, water_temp, water_level
+    range_type = request.args.get('range', '24h')  # 1h, 24h, 7d, 30d
+
+    # Calculate time range
+    now = int(time.time())
+    if range_type == '5m':
+        start_time = now - 300
+        interval = 30  # 30 second intervals
+    elif range_type == '15m':
+        start_time = now - 900
+        interval = 30  # 30 second intervals
+    elif range_type == '30m':
+        start_time = now - 1800
+        interval = 60  # 1 minute intervals
+    elif range_type == '1h':
+        start_time = now - 3600
+        interval = 60  # 1 minute intervals
+    elif range_type == '24h':
+        start_time = now - 86400
+        interval = 300  # 5 minute intervals
+    elif range_type == '7d':
+        start_time = now - (7 * 86400)
+        interval = 3600  # 1 hour intervals
+    elif range_type == '30d':
+        start_time = now - (30 * 86400)
+        interval = 86400  # 1 day intervals
+    else:
+        start_time = now - 86400
+        interval = 300
+
+    # Get data with aggregation for smoother charts
+    if interval > 60:
+        # Aggregate data by interval using SQLite's integer division
+        query = f'''
+            SELECT
+                (timestamp / ?) * ? as bucket_time,
+                AVG({sensor}) as value,
+                MIN({sensor}) as min_val,
+                MAX({sensor}) as max_val,
+                COUNT(*) as count
+            FROM sensor_readings
+            WHERE unit_id = ? AND timestamp >= ? AND {sensor} IS NOT NULL
+            GROUP BY bucket_time
+            ORDER BY bucket_time ASC
+        '''
+        readings = db.execute(query, (interval, interval, unit_id, start_time)).fetchall()
+
+        data_points = []
+        for row in readings:
+            data_points.append({
+                'timestamp': row['bucket_time'],
+                'value': round(row['value'], 2) if row['value'] else None,
+                'min': round(row['min_val'], 2) if row['min_val'] else None,
+                'max': round(row['max_val'], 2) if row['max_val'] else None
+            })
+    else:
+        # Raw data for short time ranges
+        query = f'''
+            SELECT timestamp, {sensor} as value
+            FROM sensor_readings
+            WHERE unit_id = ? AND timestamp >= ? AND {sensor} IS NOT NULL
+            ORDER BY timestamp ASC
+        '''
+        readings = db.execute(query, (unit_id, start_time)).fetchall()
+
+        data_points = []
+        for row in readings:
+            data_points.append({
+                'timestamp': row['timestamp'],
+                'value': round(row['value'], 2) if row['value'] else None
+            })
+
+    return jsonify({
+        'unit_id': unit_id,
+        'sensor': sensor,
+        'range': range_type,
+        'start_time': start_time,
+        'end_time': now,
+        'interval': interval,
+        'data': data_points
+    })
+
+
+@app.route('/room/<room_id>/sensors/history', methods=['GET'])
+def get_room_sensor_history(room_id):
+    """Get historical room sensor data for charts"""
+    db = get_db()
+
+    # Map room_id to unit_id
+    unit_id = f"ROOM_{room_id.upper()}"
+
+    # Parameters
+    sensor = request.args.get('sensor', 'temp')  # temp, humidity, pressure, iaq, co2
+    range_type = request.args.get('range', '24h')
+
+    # Calculate time range
+    now = int(time.time())
+    if range_type == '5m':
+        start_time = now - 300
+        interval = 30
+    elif range_type == '15m':
+        start_time = now - 900
+        interval = 30
+    elif range_type == '30m':
+        start_time = now - 1800
+        interval = 60
+    elif range_type == '1h':
+        start_time = now - 3600
+        interval = 60
+    elif range_type == '24h':
+        start_time = now - 86400
+        interval = 300
+    elif range_type == '7d':
+        start_time = now - (7 * 86400)
+        interval = 3600
+    elif range_type == '30d':
+        start_time = now - (30 * 86400)
+        interval = 86400
+    else:
+        start_time = now - 86400
+        interval = 300
+
+    # Get data with aggregation
+    if interval > 60:
+        query = f'''
+            SELECT
+                (timestamp / ?) * ? as bucket_time,
+                AVG({sensor}) as value,
+                MIN({sensor}) as min_val,
+                MAX({sensor}) as max_val
+            FROM room_sensors
+            WHERE unit_id = ? AND timestamp >= ? AND {sensor} IS NOT NULL
+            GROUP BY bucket_time
+            ORDER BY bucket_time ASC
+        '''
+        readings = db.execute(query, (interval, interval, unit_id, start_time)).fetchall()
+
+        data_points = []
+        for row in readings:
+            data_points.append({
+                'timestamp': row['bucket_time'],
+                'value': round(row['value'], 2) if row['value'] else None,
+                'min': round(row['min_val'], 2) if row['min_val'] else None,
+                'max': round(row['max_val'], 2) if row['max_val'] else None
+            })
+    else:
+        query = f'''
+            SELECT timestamp, {sensor} as value
+            FROM room_sensors
+            WHERE unit_id = ? AND timestamp >= ? AND {sensor} IS NOT NULL
+            ORDER BY timestamp ASC
+        '''
+        readings = db.execute(query, (unit_id, start_time)).fetchall()
+
+        data_points = []
+        for row in readings:
+            data_points.append({
+                'timestamp': row['timestamp'],
+                'value': round(row['value'], 2) if row['value'] else None
+            })
+
+    return jsonify({
+        'room_id': room_id,
+        'sensor': sensor,
+        'range': range_type,
+        'start_time': start_time,
+        'end_time': now,
+        'interval': interval,
+        'data': data_points
+    })
+
+
+@app.route('/units/<unit_id>/sensors', methods=['POST'])
+def update_unit_sensors(unit_id):
+    """Receive sensor data from ESP32 controller"""
+    data = request.get_json()
+    db = get_db()
+    timestamp = int(time.time())
+
+    reservoir = data.get('reservoir', {})
+    climate = data.get('climate', {})
+
+    db.execute('''
+        INSERT INTO sensor_readings
+        (unit_id, timestamp, ph, tds, turbidity, water_temp, water_level, climate_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        unit_id, timestamp,
+        reservoir.get('ph'), reservoir.get('tds'),
+        reservoir.get('turbidity'), reservoir.get('water_temp'),
+        reservoir.get('water_level'), json.dumps(climate)
+    ))
+    db.commit()
+
+    # Broadcast update via WebSocket
+    socketio.emit('sensor_update', {
+        'unit_id': unit_id,
+        'timestamp': timestamp
+    })
+
+    return jsonify({"status": "ok", "unit_id": unit_id, "timestamp": timestamp})
+
 @app.route('/units/<unit_id>/relays', methods=['GET'])
 def get_unit_relays(unit_id):
     """Get current relay states for a hydro unit"""
@@ -275,7 +475,6 @@ def get_unit_relays(unit_id):
     ''', (unit_id,)).fetchone()
 
     if not relay:
-        # Return default states
         return jsonify({
             "unit_id": unit_id,
             "timestamp": int(time.time()),
@@ -321,8 +520,7 @@ def update_unit_relay(unit_id):
         VALUES (?, ?, ?, ?, ?)
     ''', (unit_id, timestamp, lights, fans, pump))
 
-    # Only switch specific relay to manual mode if explicitly toggling (not mode change)
-    # Check which relay was changed and update only that relay's mode
+    # Only switch specific relay to manual mode if explicitly toggling
     relay_changed = None
     if 'lights' in data and (not current or data['lights'] != current['lights']):
         relay_changed = 'lights'
@@ -331,7 +529,6 @@ def update_unit_relay(unit_id):
     elif 'pump' in data and (not current or data['pump'] != current['pump']):
         relay_changed = 'pump'
 
-    # Update control mode for the specific relay that was changed
     if relay_changed:
         schedule = db.execute('''
             SELECT id, schedule_data FROM schedules
@@ -375,12 +572,10 @@ def get_unit_schedule(unit_id):
     ''', (unit_id,)).fetchall()
 
     result = {}
-    # Default per-relay control modes
     control_modes = {'lights': 'timer', 'fans': 'timer', 'pump': 'timer'}
 
     for schedule in schedules:
         schedule_data = json.loads(schedule['schedule_data'])
-        # Extract control_modes if present in schedule_data
         if 'control_modes' in schedule_data:
             control_modes.update(schedule_data['control_modes'])
             del schedule_data['control_modes']
@@ -395,7 +590,6 @@ def update_unit_schedule(unit_id):
     data = request.get_json()
     db = get_db()
 
-    # Get existing schedule to preserve control_modes
     existing = db.execute('''
         SELECT schedule_data FROM schedules
         WHERE unit_id = ? AND active = 1
@@ -408,10 +602,8 @@ def update_unit_schedule(unit_id):
         if 'control_modes' in existing_data:
             existing_control_modes = existing_data['control_modes']
 
-    # Preserve or update control_modes
     control_modes = data.pop('control_modes', existing_control_modes)
 
-    # If updating a specific relay's schedule, set that relay to timer mode
     if 'lights' in data and isinstance(data['lights'], dict):
         control_modes['lights'] = 'timer'
     if 'fans' in data and isinstance(data['fans'], dict):
@@ -419,13 +611,10 @@ def update_unit_schedule(unit_id):
     if 'pump_cycle' in data:
         control_modes['pump'] = 'timer'
 
-    # Store control_modes in schedule_data
     schedule_data = {**data, 'control_modes': control_modes}
 
-    # Deactivate old schedules
     db.execute('UPDATE schedules SET active = 0 WHERE unit_id = ?', (unit_id,))
 
-    # Insert new schedule
     db.execute('''
         INSERT INTO schedules (unit_id, schedule_type, schedule_data, control_mode)
         VALUES (?, ?, ?, ?)
@@ -441,15 +630,14 @@ def update_control_mode(unit_id):
     data = request.get_json()
     db = get_db()
 
-    relay_type = data.get('relay')  # 'lights', 'fans', or 'pump'
-    mode = data.get('mode')  # 'manual' or 'timer'
+    relay_type = data.get('relay')
+    mode = data.get('mode')
 
     if relay_type not in ['lights', 'fans', 'pump']:
         return jsonify({'error': 'Invalid relay type'}), 400
     if mode not in ['manual', 'timer']:
         return jsonify({'error': 'Invalid mode'}), 400
 
-    # Get existing schedule
     schedule = db.execute('''
         SELECT id, schedule_data FROM schedules
         WHERE unit_id = ? AND active = 1
@@ -474,7 +662,6 @@ def update_control_mode(unit_id):
             'control_modes': schedule_data['control_modes']
         })
     else:
-        # Create new schedule with control mode
         schedule_data = {
             'control_modes': {'lights': 'timer', 'fans': 'timer', 'pump': 'timer'}
         }
@@ -509,14 +696,10 @@ def get_front_room_sensors():
     if not sensor:
         return jsonify({
             "unit_id": "ROOM_FRONT",
-            "timestamp": int(time.time()),
-            "bme": {
-                "temp": 25.4,
-                "humidity": 62,
-                "pressure": 1007,
-                "iaq": 132
-            },
-            "co2": 780
+            "timestamp": None,
+            "bme": {"temp": None, "humidity": None, "pressure": None, "iaq": None},
+            "co2": None,
+            "status": "no_data"
         })
 
     return jsonify({
@@ -530,6 +713,32 @@ def get_front_room_sensors():
         },
         "co2": sensor['co2']
     })
+
+@app.route('/room/front/sensors', methods=['POST'])
+def update_front_room_sensors():
+    """Receive sensor data from ESP32 controller"""
+    data = request.get_json()
+    db = get_db()
+    timestamp = int(time.time())
+
+    db.execute('''
+        INSERT INTO room_sensors
+        (unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        'ROOM_FRONT', timestamp,
+        data.get('temp'), data.get('humidity'),
+        data.get('pressure'), data.get('iaq'),
+        data.get('co2'), None, None
+    ))
+    db.commit()
+
+    socketio.emit('room_update', {
+        'unit_id': 'ROOM_FRONT',
+        'timestamp': timestamp
+    })
+
+    return jsonify({"status": "ok", "timestamp": timestamp})
 
 @app.route('/room/back/sensors', methods=['GET'])
 def get_back_room_sensors():
@@ -546,18 +755,11 @@ def get_back_room_sensors():
     if not sensor:
         return jsonify({
             "unit_id": "ROOM_BACK",
-            "timestamp": int(time.time()),
-            "bme": {
-                "temp": 25.4,
-                "humidity": 62,
-                "pressure": 1007,
-                "iaq": 132
-            },
-            "co2": 780,
-            "ac": {
-                "current_set_temp": 24,
-                "mode": "COOL"
-            }
+            "timestamp": None,
+            "bme": {"temp": None, "humidity": None, "pressure": None, "iaq": None},
+            "co2": None,
+            "ac": {"current_set_temp": None, "mode": None},
+            "status": "no_data"
         })
 
     return jsonify({
@@ -575,6 +777,33 @@ def get_back_room_sensors():
             "mode": sensor['ac_mode']
         }
     })
+
+@app.route('/room/back/sensors', methods=['POST'])
+def update_back_room_sensors():
+    """Receive sensor data from ESP32 controller"""
+    data = request.get_json()
+    db = get_db()
+    timestamp = int(time.time())
+
+    db.execute('''
+        INSERT INTO room_sensors
+        (unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        'ROOM_BACK', timestamp,
+        data.get('temp'), data.get('humidity'),
+        data.get('pressure'), data.get('iaq'),
+        data.get('co2'), data.get('ac_temp'),
+        data.get('ac_mode', 'COOL')
+    ))
+    db.commit()
+
+    socketio.emit('room_update', {
+        'unit_id': 'ROOM_BACK',
+        'timestamp': timestamp
+    })
+
+    return jsonify({"status": "ok", "timestamp": timestamp})
 
 @app.route('/room/back/ac_schedule', methods=['GET'])
 def get_ac_schedule():
@@ -711,10 +940,8 @@ def upload_camera_image(camera_id):
             'file_size': file_size
         })
 
-        # Log queued upload
         print(f"Camera {camera_id} upload queued at {timestamp} (queue size: {camera_upload_queue.qsize()})")
 
-        # Return immediately - DB write happens async
         return jsonify({
             'message': 'Image uploaded successfully',
             'camera_id': camera_id,
@@ -829,7 +1056,6 @@ def export_sensors_csv():
     """Export sensor data as CSV"""
     import csv
     import io
-    from datetime import datetime, timedelta
 
     unit = request.args.get('unit', 'ALL')
     date_range = request.args.get('range', 'last7days')
@@ -841,14 +1067,14 @@ def export_sensors_csv():
     # Calculate date range
     end_time = int(time.time())
     if date_range == 'today':
-        start_time = end_time - 86400  # 24 hours
+        start_time = end_time - 86400
     elif date_range == 'yesterday':
-        start_time = end_time - 172800  # 48 hours
-        end_time = end_time - 86400    # 24 hours ago
+        start_time = end_time - 172800
+        end_time = end_time - 86400
     elif date_range == 'last7days':
-        start_time = end_time - (7 * 86400)  # 7 days
+        start_time = end_time - (7 * 86400)
     elif date_range == 'last30days':
-        start_time = end_time - (30 * 86400)  # 30 days
+        start_time = end_time - (30 * 86400)
     elif date_range == 'thismonth':
         now = datetime.now()
         start_of_month = datetime(now.year, now.month, 1)
@@ -865,9 +1091,9 @@ def export_sensors_csv():
         end_time = int(end_of_last_month.timestamp())
     elif date_range == 'custom' and start_date and end_date:
         start_time = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())
-        end_time = int(datetime.strptime(end_date, '%Y-%m-%d').timestamp()) + 86399  # End of day
+        end_time = int(datetime.strptime(end_date, '%Y-%m-%d').timestamp()) + 86399
     else:
-        start_time = end_time - (7 * 86400)  # Default to last 7 days
+        start_time = end_time - (7 * 86400)
 
     # Build query
     if unit == 'ALL':
@@ -893,12 +1119,10 @@ def export_sensors_csv():
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # Write header
     header = ['Unit ID', 'Timestamp', 'DateTime', 'pH', 'TDS (ppm)', 'Turbidity (NTU)',
-              'Water Temp (°C)', 'Water Level (%)', 'Climate Data']
+              'Water Temp (C)', 'Water Level (%)', 'Climate Data']
     writer.writerow(header)
 
-    # Write data
     for reading in readings:
         timestamp = reading['timestamp']
         dt = datetime.fromtimestamp(timestamp)
@@ -924,13 +1148,111 @@ def export_sensors_csv():
         headers={'Content-Disposition': f'attachment; filename=sensor-data-{unit}-{date_range}.csv'}
     )
 
+@app.route('/export/room/csv', methods=['GET'])
+def export_room_csv():
+    """Export room sensor data as CSV"""
+    import csv
+    import io
+
+    room = request.args.get('room', 'ALL')
+    date_range = request.args.get('range', 'last7days')
+    start_date = request.args.get('startDate')
+    end_date = request.args.get('endDate')
+
+    db = get_db()
+
+    # Calculate date range
+    end_time = int(time.time())
+    if date_range == 'today':
+        start_time = end_time - 86400
+    elif date_range == 'yesterday':
+        start_time = end_time - 172800
+        end_time = end_time - 86400
+    elif date_range == 'last7days':
+        start_time = end_time - (7 * 86400)
+    elif date_range == 'last30days':
+        start_time = end_time - (30 * 86400)
+    elif date_range == 'thismonth':
+        now = datetime.now()
+        start_of_month = datetime(now.year, now.month, 1)
+        start_time = int(start_of_month.timestamp())
+    elif date_range == 'lastmonth':
+        now = datetime.now()
+        if now.month == 1:
+            start_of_last_month = datetime(now.year - 1, 12, 1)
+            end_of_last_month = datetime(now.year, 1, 1) - timedelta(days=1)
+        else:
+            start_of_last_month = datetime(now.year, now.month - 1, 1)
+            end_of_last_month = datetime(now.year, now.month, 1) - timedelta(days=1)
+        start_time = int(start_of_last_month.timestamp())
+        end_time = int(end_of_last_month.timestamp())
+    elif date_range == 'custom' and start_date and end_date:
+        start_time = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())
+        end_time = int(datetime.strptime(end_date, '%Y-%m-%d').timestamp()) + 86399
+    else:
+        start_time = end_time - (7 * 86400)
+
+    # Build query
+    if room == 'ALL':
+        query = '''
+            SELECT unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode
+            FROM room_sensors
+            WHERE timestamp BETWEEN ? AND ?
+            ORDER BY timestamp DESC
+        '''
+        params = (start_time, end_time)
+    else:
+        query = '''
+            SELECT unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode
+            FROM room_sensors
+            WHERE unit_id = ? AND timestamp BETWEEN ? AND ?
+            ORDER BY timestamp DESC
+        '''
+        params = (room, start_time, end_time)
+
+    readings = db.execute(query, params).fetchall()
+
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    header = ['Room', 'Timestamp', 'DateTime', 'Temperature (C)', 'Humidity (%)',
+              'Pressure (hPa)', 'IAQ', 'CO2 (ppm)', 'AC Temp (C)', 'AC Mode']
+    writer.writerow(header)
+
+    for reading in readings:
+        timestamp = reading['timestamp']
+        dt = datetime.fromtimestamp(timestamp)
+
+        room_name = 'Front Room' if reading['unit_id'] == 'ROOM_FRONT' else 'Back Room'
+
+        row = [
+            room_name,
+            timestamp,
+            dt.strftime('%Y-%m-%d %H:%M:%S'),
+            reading['temp'],
+            reading['humidity'],
+            reading['pressure'],
+            reading['iaq'],
+            reading['co2'],
+            reading['ac_temp'],
+            reading['ac_mode']
+        ]
+        writer.writerow(row)
+
+    output.seek(0)
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=room-data-{room}-{date_range}.csv'}
+    )
+
 @app.route('/export/images/zip', methods=['GET'])
 def export_images_zip():
     """Export camera images as ZIP"""
     import zipfile
     import io
-    import glob
-    from datetime import datetime, timedelta
 
     unit = request.args.get('unit', 'ALL')
     date_range = request.args.get('range', 'last7days')
@@ -939,7 +1261,7 @@ def export_images_zip():
 
     db = get_db()
 
-    # Calculate date range (same logic as CSV)
+    # Calculate date range
     end_time = int(time.time())
     if date_range == 'today':
         start_time = end_time - 86400
@@ -1002,17 +1324,14 @@ def export_images_zip():
             timestamp = image['timestamp']
             image_path = image['image_path']
 
-            # Extract unit from camera_id (e.g., DWC1L11 -> DWC1)
             unit_id = camera_id[:camera_id.index('L')] if 'L' in camera_id else 'UNKNOWN'
 
-            # Create organized path in ZIP
             dt = datetime.fromtimestamp(timestamp)
             date_str = dt.strftime('%Y-%m-%d')
             time_str = dt.strftime('%H-%M-%S')
 
             zip_path = f"{unit_id}/{camera_id}/{date_str}/{camera_id}_{time_str}.jpg"
 
-            # Add file to ZIP
             try:
                 full_path = os.path.join(app.root_path, image_path)
                 if os.path.exists(full_path):
@@ -1065,13 +1384,9 @@ def clear_data():
     """Clear sensor readings and historical data from the database"""
     db = get_db()
     try:
-        # Clear sensor readings
         db.execute('DELETE FROM sensor_readings')
-        # Clear room sensors
         db.execute('DELETE FROM room_sensors')
-        # Clear camera images table (but not actual image files)
         db.execute('DELETE FROM camera_images')
-        # Reset camera status
         db.execute('DELETE FROM camera_status')
         db.commit()
         return jsonify({"message": "Database cleared successfully"})
@@ -1100,111 +1415,6 @@ def handle_leave_unit(data):
     leave_room(unit_id)
     emit('left', {'unit_id': unit_id})
 
-# Background task to simulate sensor data updates
-def simulate_sensor_updates():
-    """Background task to simulate sensor data updates"""
-    while True:
-        try:
-            with app.app_context():
-                db = get_db()
-                timestamp = int(time.time())
-
-                # Update hydro units
-                unit_ids = ['DWC1', 'DWC2', 'NFT', 'AERO', 'TROUGH']
-                for unit_id in unit_ids:
-
-                    # Generate random sensor data
-                    climate_data = {}
-                    for level in [1, 2, 3, 4]:
-                        for pos in [1, 2]:
-                            key = f"L{level}{pos}"
-                            climate_data[key] = {
-                                "temp": round(random.uniform(22, 26), 1),
-                                "humidity": random.randint(65, 75)
-                            }
-
-                    # Insert sensor reading
-                    db.execute('''
-                        INSERT INTO sensor_readings
-                        (unit_id, timestamp, ph, tds, turbidity, water_temp, water_level, climate_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        unit_id, timestamp,
-                        round(random.uniform(5.5, 7.0), 1),
-                        random.randint(800, 1200),
-                        random.randint(8, 20),
-                        round(random.uniform(20, 25), 1),
-                        random.randint(70, 90),
-                        json.dumps(climate_data)
-                    ))
-
-                # Update room sensors
-                for room in ['ROOM_FRONT', 'ROOM_BACK']:
-                    ac_temp = random.randint(22, 26) if room == 'ROOM_BACK' else None
-                    ac_mode = 'COOL' if room == 'ROOM_BACK' else None
-
-                    db.execute('''
-                        INSERT INTO room_sensors
-                        (unit_id, timestamp, temp, humidity, pressure, iaq, co2, ac_temp, ac_mode)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        room, timestamp,
-                        round(random.uniform(22, 28), 1),
-                        random.randint(55, 70),
-                        random.randint(1000, 1020),
-                        random.randint(100, 200),
-                        random.randint(400, 1000),
-                        ac_temp, ac_mode
-                    ))
-
-                db.commit()
-
-                # Simulate camera images every 5 minutes (300 seconds)
-                if timestamp % 300 == 0:  # Every 5 minutes
-                    # Generate mock camera images for each unit
-                    unit_ids = ['DWC1', 'DWC2', 'NFT', 'AERO', 'TROUGH']
-                    for unit_id in unit_ids:
-                        # Each unit can have 1-8 cameras (simulating random presence)
-                        num_cameras = random.randint(2, 6)
-
-                        for i in range(num_cameras):
-                            level = random.randint(1, 4)
-                            position = random.randint(1, 2)
-                            camera_id = f"{unit_id}L{level}{position}"
-
-                            # Create mock image data (you would normally receive actual image)
-                            mock_image_path = f"{UPLOAD_FOLDER}/mock_{camera_id}_{timestamp}.jpg"
-
-                            # Insert camera image record
-                            db.execute('''
-                                INSERT INTO camera_images
-                                (camera_id, unit_id, level, position, image_path, timestamp, file_size)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ''', (camera_id, unit_id, level, position, mock_image_path, timestamp, 1024))
-
-                            # Update camera status
-                            db.execute('''
-                                INSERT OR REPLACE INTO camera_status
-                                (camera_id, unit_id, last_image_timestamp, total_images, status, updated_at)
-                                VALUES (?, ?, ?,
-                                    COALESCE((SELECT total_images FROM camera_status WHERE camera_id = ?), 0) + 1,
-                                    'online', CURRENT_TIMESTAMP)
-                            ''', (camera_id, unit_id, timestamp, camera_id))
-
-                            # Log camera simulation
-                            print(f"Simulated camera {camera_id} image at {timestamp}")
-
-                # Broadcast updates via WebSocket
-                socketio.emit('sensor_update', {
-                    'timestamp': timestamp,
-                    'message': 'Sensor data updated'
-                })
-
-        except Exception as e:
-            print(f"Error in sensor simulation: {e}")
-
-        time.sleep(30)  # Update every 30 seconds
-
 
 def camera_upload_worker(worker_id):
     """Background worker to process camera upload queue - handles DB writes sequentially"""
@@ -1212,13 +1422,11 @@ def camera_upload_worker(worker_id):
 
     while True:
         try:
-            # Block until an item is available
             upload_data = camera_upload_queue.get()
 
-            if upload_data is None:  # Shutdown signal
+            if upload_data is None:
                 break
 
-            # Get a direct database connection (not tied to request context)
             db = get_db_direct()
 
             try:
@@ -1230,14 +1438,12 @@ def camera_upload_worker(worker_id):
                 timestamp = upload_data['timestamp']
                 file_size = upload_data['file_size']
 
-                # Insert image record
                 db.execute('''
                     INSERT INTO camera_images
                     (camera_id, unit_id, level, position, image_path, timestamp, file_size)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (camera_id, unit_id, level, position, filepath, timestamp, file_size))
 
-                # Update camera status with proper locking
                 db.execute('''
                     INSERT INTO camera_status (camera_id, unit_id, last_image_timestamp, total_images, status, updated_at)
                     VALUES (?, ?, ?, 1, 'online', CURRENT_TIMESTAMP)
@@ -1251,7 +1457,6 @@ def camera_upload_worker(worker_id):
                 db.commit()
                 print(f"Worker {worker_id}: Saved camera {camera_id} image to DB")
 
-                # Emit WebSocket event to notify frontend of new image
                 socketio.emit('camera_image_uploaded', {
                     'camera_id': camera_id,
                     'unit_id': unit_id,
@@ -1272,21 +1477,16 @@ def camera_upload_worker(worker_id):
             print(f"Worker {worker_id}: Queue error: {e}")
 
 
-if __name__ == '__main__':
-    # Initialize database
-    init_db()
+# Initialize database when module loads
+init_db()
 
-    # Start camera upload queue workers (handles 20+ concurrent uploads)
+if __name__ == '__main__':
+    # Start camera upload queue workers
     for i in range(QUEUE_WORKER_COUNT):
         worker_thread = threading.Thread(target=camera_upload_worker, args=(i,))
         worker_thread.daemon = True
         worker_thread.start()
     print(f"Started {QUEUE_WORKER_COUNT} camera upload workers")
-
-    # Start background sensor simulation
-    sensor_thread = threading.Thread(target=simulate_sensor_updates)
-    sensor_thread.daemon = True
-    sensor_thread.start()
 
     # Run Flask app with SocketIO
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

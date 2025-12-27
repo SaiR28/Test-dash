@@ -1,41 +1,52 @@
 const theme = {
   colors: {
-    // Primary brand colors
-    primary: '#059669',
-    primaryHover: '#047857',
-    primaryLight: '#10b981',
+    // Primary brand colors - Donezo-inspired green
+    primary: '#1B4D3E',
+    primaryHover: '#143D32',
+    primaryLight: '#2D6A4F',
+    primaryGradient: 'linear-gradient(135deg, #1B4D3E 0%, #2D6A4F 100%)',
+
+    // Accent green (lighter for highlights)
+    accent: '#40916C',
+    accentLight: '#52B788',
 
     // Status colors
-    success: '#10b981',
-    successHover: '#059669',
-    warning: '#f59e0b',
-    warningHover: '#d97706',
-    danger: '#ef4444',
-    dangerHover: '#dc2626',
+    success: '#40916C',
+    successHover: '#2D6A4F',
+    successLight: '#D8F3DC',
+    warning: '#E9C46A',
+    warningHover: '#D4A84B',
+    warningLight: '#FFF3CD',
+    danger: '#E63946',
+    dangerHover: '#C62828',
+    dangerLight: '#FFEBEE',
 
-    // Surface colors
-    background: '#f1f5f9',
-    surface: '#ffffff',
-    surfaceHover: '#f8fafc',
-    border: '#e2e8f0',
-    borderHover: '#cbd5e1',
+    // Surface colors - clean white like Donezo
+    background: '#F8F9FA',
+    surface: '#FFFFFF',
+    surfaceHover: '#F1F3F4',
+    surfaceGreen: '#1B4D3E',
+    border: '#E9ECEF',
+    borderHover: '#DEE2E6',
 
     // Text colors
-    text: '#0f172a',
-    textSecondary: '#475569',
-    textMuted: '#64748b',
-    textInverse: '#ffffff',
+    text: '#212529',
+    textSecondary: '#495057',
+    textMuted: '#6C757D',
+    textInverse: '#FFFFFF',
 
     // Status mapping
-    normal: '#10b981',
-    critical: '#ef4444',
+    normal: '#40916C',
+    critical: '#E63946',
+    offline: '#ADB5BD',
 
     // Sensor colors
-    ph: '#3b82f6',
-    temperature: '#f59e0b',
-    humidity: '#06b6d4',
-    water: '#3b82f6',
-    co2: '#8b5cf6',
+    ph: '#4361EE',
+    temperature: '#F8961E',
+    humidity: '#4CC9F0',
+    water: '#4895EF',
+    co2: '#7209B7',
+    tds: '#3A86FF',
   },
 
   fonts: {
@@ -61,12 +72,12 @@ const theme = {
   },
 
   spacing: {
-    xs: '0.25rem',
-    sm: '0.5rem',
-    md: '1rem',
-    lg: '1.5rem',
-    xl: '2rem',
-    xxl: '3rem',
+    xs: '4px',
+    sm: '8px',
+    md: '12px',
+    lg: '16px',
+    xl: '24px',
+    xxl: '32px',
   },
 
   borderRadius: {

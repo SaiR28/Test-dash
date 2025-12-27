@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
+<<<<<<< HEAD
       "Bash(tree -L 2)"
+=======
+      "Bash(dir \"C:\\Users\\saira\\OneDrive\\Desktop\\Test dash\\frontend\\src\" /b)"
+>>>>>>> bea0f23f31e93f27b92e63a2290dced146ace4a9
     ]
   }
 }

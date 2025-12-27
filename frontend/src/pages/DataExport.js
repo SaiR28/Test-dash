@@ -148,7 +148,12 @@ const StatusMessage = styled.div`
   }};
 `;
 
-const HYDRO_UNITS = ['ALL', 'DWC1', 'DWC2', 'NFT', 'AERO', 'TROUGH'];
+const HYDRO_UNITS = ['ALL', 'DWC1', 'DWC2', 'DWC3', 'AERO', 'TROUGH'];
+const ROOMS = [
+  { value: 'ALL', label: 'All Rooms' },
+  { value: 'front', label: 'Front Room' },
+  { value: 'back', label: 'Back Room' }
+];
 const DATE_RANGES = [
   { value: 'today', label: 'Today' },
   { value: 'yesterday', label: 'Yesterday' },
@@ -173,6 +178,13 @@ const DataExport = () => {
   const [zipEndDate, setZipEndDate] = useState('');
   const [zipLoading, setZipLoading] = useState(false);
   const [zipStatus, setZipStatus] = useState(null);
+
+  const [roomSelect, setRoomSelect] = useState('ALL');
+  const [roomDateRange, setRoomDateRange] = useState('last7days');
+  const [roomStartDate, setRoomStartDate] = useState('');
+  const [roomEndDate, setRoomEndDate] = useState('');
+  const [roomLoading, setRoomLoading] = useState(false);
+  const [roomStatus, setRoomStatus] = useState(null);
 
   const handleCsvExport = async () => {
     setCsvLoading(true);
@@ -246,6 +258,42 @@ const DataExport = () => {
     }
   };
 
+  const handleRoomExport = async () => {
+    setRoomLoading(true);
+    setRoomStatus(null);
+
+    try {
+      const params = new URLSearchParams({
+        room: roomSelect,
+        range: roomDateRange,
+        ...(roomDateRange === 'custom' && {
+          startDate: roomStartDate,
+          endDate: roomEndDate
+        })
+      });
+
+      const response = await axios.get(`/export/room/csv?${params}`, {
+        responseType: 'blob'
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `room-data-${roomSelect}-${roomDateRange}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setRoomStatus({ type: 'success', message: 'Room data CSV downloaded successfully!' });
+    } catch (error) {
+      setRoomStatus({ type: 'error', message: 'Failed to export room data.' });
+      console.error('Room export error:', error);
+    } finally {
+      setRoomLoading(false);
+    }
+  };
+
   return (
     <Container>
       <Section>
@@ -310,6 +358,69 @@ const DataExport = () => {
 
         {csvStatus && (
           <StatusMessage type={csvStatus.type}>{csvStatus.message}</StatusMessage>
+        )}
+      </Section>
+
+      <Section>
+        <SectionTitle>🌡️ Room Environment Export (CSV)</SectionTitle>
+        <SectionDescription>
+          Export room temperature, humidity, CO2, IAQ, and AC data for Front and Back rooms.
+        </SectionDescription>
+
+        <FormGrid>
+          <FormGroup>
+            <Label>Room</Label>
+            <Select value={roomSelect} onChange={(e) => setRoomSelect(e.target.value)}>
+              {ROOMS.map(room => (
+                <option key={room.value} value={room.value}>{room.label}</option>
+              ))}
+            </Select>
+          </FormGroup>
+
+          <FormGroup>
+            <Label>Date Range</Label>
+            <Select value={roomDateRange} onChange={(e) => setRoomDateRange(e.target.value)}>
+              {DATE_RANGES.map(range => (
+                <option key={range.value} value={range.value}>{range.label}</option>
+              ))}
+            </Select>
+          </FormGroup>
+
+          {roomDateRange === 'custom' && (
+            <>
+              <FormGroup>
+                <Label>Start Date</Label>
+                <Input
+                  type="date"
+                  value={roomStartDate}
+                  onChange={(e) => setRoomStartDate(e.target.value)}
+                />
+              </FormGroup>
+              <FormGroup>
+                <Label>End Date</Label>
+                <Input
+                  type="date"
+                  value={roomEndDate}
+                  onChange={(e) => setRoomEndDate(e.target.value)}
+                />
+              </FormGroup>
+            </>
+          )}
+        </FormGrid>
+
+        <ButtonContainer>
+          <ExportButton
+            variant="primary"
+            onClick={handleRoomExport}
+            disabled={roomLoading || (roomDateRange === 'custom' && (!roomStartDate || !roomEndDate))}
+          >
+            {roomLoading ? <LoadingSpinner /> : '📥'}
+            {roomLoading ? 'Exporting...' : 'Export Room CSV'}
+          </ExportButton>
+        </ButtonContainer>
+
+        {roomStatus && (
+          <StatusMessage type={roomStatus.type}>{roomStatus.message}</StatusMessage>
         )}
       </Section>
 

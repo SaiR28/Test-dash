@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import styled from 'styled-components';
 import SensorCard from '../components/SensorCard';
+import SensorChartModal from '../components/SensorChartModal';
 import DHT22Card from '../components/DHT22Card';
 import RelayControl from '../components/RelayControl';
 import PumpControl from '../components/PumpControl';
@@ -11,34 +12,142 @@ import { useSocket } from '../contexts/SocketContext';
 const Container = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${props => props.theme.spacing.md};
+  gap: ${props => props.theme.spacing.lg};
+`;
+
+/* Hero Header for Unit */
+const HeroHeader = styled.div`
+  background: ${props => props.theme.colors.primaryGradient};
+  border-radius: ${props => props.theme.borderRadius.lg};
+  padding: ${props => props.theme.spacing.xl};
+  color: white;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 300px;
+    height: 300px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 50%;
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.lg};
+  }
+`;
+
+const HeroContent = styled.div`
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: ${props => props.theme.spacing.lg};
+`;
+
+const HeroLeft = styled.div``;
+
+const HeroTitle = styled.h1`
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 ${props => props.theme.spacing.xs} 0;
+`;
+
+const HeroSubtitle = styled.p`
+  font-size: 0.85rem;
+  opacity: 0.8;
+  margin: 0;
+`;
+
+const HeroStats = styled.div`
+  display: flex;
+  gap: ${props => props.theme.spacing.xl};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    gap: ${props => props.theme.spacing.lg};
+  }
+`;
+
+const HeroStat = styled.div`
+  text-align: center;
+`;
+
+const HeroStatValue = styled.div`
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 1.5rem;
+  }
+`;
+
+const HeroStatLabel = styled.div`
+  font-size: 0.7rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
 `;
 
 const Section = styled.section`
   background: ${props => props.theme.colors.surface};
-  border-radius: ${props => props.theme.borderRadius.md};
-  padding: ${props => props.theme.spacing.md};
-  box-shadow: ${props => props.theme.shadows.sm};
+  border-radius: ${props => props.theme.borderRadius.lg};
+  padding: ${props => props.theme.spacing.lg};
+  border: 1px solid ${props => props.theme.colors.border};
 
   @media (max-width: ${props => props.theme.breakpoints.sm}) {
-    padding: ${props => props.theme.spacing.sm};
-    border-radius: ${props => props.theme.borderRadius.sm};
+    padding: ${props => props.theme.spacing.md};
   }
 `;
 
+const SectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: ${props => props.theme.spacing.lg};
+`;
+
 const SectionTitle = styled.h2`
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: ${props => props.theme.colors.textSecondary};
-  margin-bottom: ${props => props.theme.spacing.sm};
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-size: 1rem;
+  font-weight: 700;
+  color: ${props => props.theme.colors.text};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+`;
+
+const SectionHint = styled.span`
+  font-size: 0.75rem;
+  color: ${props => props.theme.colors.textMuted};
+  font-weight: 400;
+`;
+
+const SensorGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: ${props => props.theme.spacing.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.lg}) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: ${props => props.theme.spacing.sm};
+  }
 `;
 
 const ClimateGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: ${props => props.theme.spacing.xs};
+  gap: ${props => props.theme.spacing.sm};
 
   @media (max-width: ${props => props.theme.breakpoints.sm}) {
     grid-template-columns: repeat(2, 1fr);
@@ -47,27 +156,48 @@ const ClimateGrid = styled.div`
 
 const RelayGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: ${props => props.theme.spacing.sm};
+  grid-template-columns: repeat(3, 1fr);
+  gap: ${props => props.theme.spacing.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.lg}) {
+    grid-template-columns: repeat(2, 1fr);
+  }
 
   @media (max-width: ${props => props.theme.breakpoints.sm}) {
     grid-template-columns: 1fr;
   }
 `;
 
-const LoadingMessage = styled.div`
-  text-align: center;
-  padding: ${props => props.theme.spacing.xl};
-  color: ${props => props.theme.colors.textSecondary};
+const LoadingContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  color: ${props => props.theme.colors.textMuted};
+`;
+
+const LoadingSpinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 3px solid ${props => props.theme.colors.border};
+  border-top-color: ${props => props.theme.colors.primary};
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: ${props => props.theme.spacing.md};
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 `;
 
 const ErrorMessage = styled.div`
-  background: ${props => props.theme.colors.danger}10;
+  background: ${props => props.theme.colors.dangerLight};
   color: ${props => props.theme.colors.danger};
   padding: ${props => props.theme.spacing.lg};
-  border-radius: ${props => props.theme.borderRadius.md};
+  border-radius: ${props => props.theme.borderRadius.lg};
   border: 1px solid ${props => props.theme.colors.danger}30;
-  margin-bottom: ${props => props.theme.spacing.lg};
+  text-align: center;
 `;
 
 const HydroUnitDetail = () => {
@@ -79,6 +209,18 @@ const HydroUnitDetail = () => {
   const [scheduleData, setScheduleData] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [chartModal, setChartModal] = useState({ isOpen: false, sensorInfo: null });
+
+  const handleSensorClick = (sensorInfo) => {
+    setChartModal({
+      isOpen: true,
+      sensorInfo: { ...sensorInfo, unitId }
+    });
+  };
+
+  const closeChartModal = () => {
+    setChartModal({ isOpen: false, sensorInfo: null });
+  };
 
   useEffect(() => {
     if (unitId) {
@@ -177,20 +319,63 @@ const HydroUnitDetail = () => {
 
 
   if (loading) {
-    return <LoadingMessage>Loading {unitId} data...</LoadingMessage>;
+    return (
+      <LoadingContainer>
+        <LoadingSpinner />
+        Loading {unitId} data...
+      </LoadingContainer>
+    );
   }
 
   if (error) {
     return <ErrorMessage>{error}</ErrorMessage>;
   }
 
+  const unitNames = {
+    'DWC1': 'DWC System 1',
+    'DWC2': 'DWC System 2',
+    'DWC3': 'DWC System 3',
+    'AERO': 'Aeroponic System',
+    'TROUGH': 'Trough System'
+  };
+
   return (
     <Container>
+      {/* Hero Header */}
+      <HeroHeader>
+        <HeroContent>
+          <HeroLeft>
+            <HeroTitle>{unitNames[unitId] || unitId}</HeroTitle>
+            <HeroSubtitle>Real-time sensor monitoring and control</HeroSubtitle>
+          </HeroLeft>
+          <HeroStats>
+            <HeroStat>
+              <HeroStatValue>{sensorData?.reservoir?.ph?.toFixed(1) || '--'}</HeroStatValue>
+              <HeroStatLabel>pH Level</HeroStatLabel>
+            </HeroStat>
+            <HeroStat>
+              <HeroStatValue>{sensorData?.reservoir?.water_level || '--'}%</HeroStatValue>
+              <HeroStatLabel>Water Level</HeroStatLabel>
+            </HeroStat>
+            <HeroStat>
+              <HeroStatValue>{sensorData?.reservoir?.tds || '--'}</HeroStatValue>
+              <HeroStatLabel>TDS (ppm)</HeroStatLabel>
+            </HeroStat>
+          </HeroStats>
+        </HeroContent>
+      </HeroHeader>
+
       {/* Reservoir Sensors */}
       <Section>
-        <SectionTitle>🧪 Reservoir Sensors</SectionTitle>
+        <SectionHeader>
+          <SectionTitle>
+            <span>🧪</span>
+            Reservoir Sensors
+          </SectionTitle>
+          <SectionHint>Tap cards for charts</SectionHint>
+        </SectionHeader>
         {sensorData?.reservoir && (
-          <div className="sensor-grid">
+          <SensorGrid>
             <SensorCard
               title="pH Level"
               value={sensorData.reservoir.ph}
@@ -201,6 +386,9 @@ const HydroUnitDetail = () => {
                 critical: { min: 5.0, max: 8.0 }
               }}
               icon="⚗️"
+              sensorKey="ph"
+              unitId={unitId}
+              onClick={handleSensorClick}
             />
             <SensorCard
               title="TDS"
@@ -212,6 +400,9 @@ const HydroUnitDetail = () => {
                 critical: { min: 500, max: 1500 }
               }}
               icon="💎"
+              sensorKey="tds"
+              unitId={unitId}
+              onClick={handleSensorClick}
             />
             <SensorCard
               title="Turbidity"
@@ -223,9 +414,12 @@ const HydroUnitDetail = () => {
                 critical: { min: 0, max: 25 }
               }}
               icon="🌊"
+              sensorKey="turbidity"
+              unitId={unitId}
+              onClick={handleSensorClick}
             />
             <SensorCard
-              title="Water Temperature"
+              title="Water Temp"
               value={sensorData.reservoir.water_temp}
               unit="°C"
               timestamp={sensorData.timestamp}
@@ -234,6 +428,9 @@ const HydroUnitDetail = () => {
                 critical: { min: 15, max: 30 }
               }}
               icon="🌡️"
+              sensorKey="water_temp"
+              unitId={unitId}
+              onClick={handleSensorClick}
             />
             <SensorCard
               title="Water Level"
@@ -245,14 +442,23 @@ const HydroUnitDetail = () => {
                 critical: { min: 20, max: 100 }
               }}
               icon="📊"
+              sensorKey="water_level"
+              unitId={unitId}
+              onClick={handleSensorClick}
             />
-          </div>
+          </SensorGrid>
         )}
       </Section>
 
       {/* Climate Sensors */}
       <Section>
-        <SectionTitle>🌡️ Climate Sensors (8 Levels)</SectionTitle>
+        <SectionHeader>
+          <SectionTitle>
+            <span>🌡️</span>
+            Climate Sensors
+          </SectionTitle>
+          <SectionHint>8 vertical levels</SectionHint>
+        </SectionHeader>
         {sensorData?.climate && (
           <ClimateGrid>
             {Object.entries(sensorData.climate).map(([location, data]) => (
@@ -278,7 +484,12 @@ const HydroUnitDetail = () => {
 
       {/* Relay Controls */}
       <Section>
-        <SectionTitle>🎛️ Relay Controls</SectionTitle>
+        <SectionHeader>
+          <SectionTitle>
+            <span>🎛️</span>
+            Relay Controls
+          </SectionTitle>
+        </SectionHeader>
         {relayData?.relays && (
           <RelayGrid>
             <RelayControl
@@ -315,6 +526,12 @@ const HydroUnitDetail = () => {
         )}
       </Section>
 
+      {/* Chart Modal */}
+      <SensorChartModal
+        isOpen={chartModal.isOpen}
+        onClose={closeChartModal}
+        sensorInfo={chartModal.sensorInfo}
+      />
     </Container>
   );
 };

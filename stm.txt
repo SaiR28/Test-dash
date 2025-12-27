@@ -1,0 +1,191 @@
+/* 78th test
+   STM32 multi-sensor bridge (60s reporting)
+   - Sends all calculated data EXCEPT pH
+   - pH is sent as RAW ADC + voltage only
+   - Receives relay control commands from ESP32
+*/
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_TSL2591.h>
+
+// ---------- Pins ----------
+const uint8_t PH_PIN   = PA4;
+const uint8_t TURB_PIN = PA1;
+const uint8_t TDS_PIN  = PA0;
+
+const uint8_t RELAY_LIGHT = PB0;
+const uint8_t RELAY_FAN   = PB1;
+const uint8_t RELAY_PUMP  = PB_2;
+
+const uint8_t US_TRIG_PIN = PB4;
+const uint8_t US_ECHO_PIN = PB8;
+
+const uint8_t FLOW_PIN = PA6;
+const uint8_t I2C_SDA  = PB7;
+const uint8_t I2C_SCL  = PB6;
+
+// ---------- Constants ----------
+const float VREF = 3.3f;
+const float ADC_MAX = 4095.0f;
+const unsigned long REPORT_INTERVAL = 60000UL;
+
+// Turbidity (DFRobot-style)
+const float TURB_A = -2572.2f;
+const float TURB_B = 8700.5f;
+const float TURB_C = -4352.9f;
+
+// ---------- Flow ----------
+volatile unsigned long flowPulses = 0;
+void flowISR() { flowPulses++; }
+
+// ---------- Light ----------
+Adafruit_TSL2591 tsl(2591);
+bool tslOK = false;
+
+// ---------- Serial RX buffer ----------
+String cmdBuf = "";
+
+// ---------- Helpers ----------
+float tdsFromVoltage(float v) {
+  return (133.42f * v * v * v - 255.86f * v * v + 857.39f * v) * 5.0f;
+}
+
+float turbFromVoltage(float v) {
+  float ntu = TURB_A*v*v + TURB_B*v + TURB_C;
+  return max(0.0f, ntu);
+}
+
+long readUltrasonicCM() {
+  digitalWrite(US_TRIG_PIN, LOW);
+  delayMicroseconds(5);
+  digitalWrite(US_TRIG_PIN, HIGH);
+  delayMicroseconds(20);
+  digitalWrite(US_TRIG_PIN, LOW);
+
+  long d = pulseIn(US_ECHO_PIN, HIGH, 60000UL);
+  if (d == 0) return -1;
+  return d / 58;
+}
+
+// ---------- Relay command didler ----------
+void handleSerialCommands() {
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\r') continue;
+
+    if (c == '\n') {
+      cmdBuf.trim();
+
+      if (cmdBuf.startsWith("RELAY")) {
+        // Format: RELAY <NAME> <0/1>
+        int s1 = cmdBuf.indexOf(' ');
+        int s2 = cmdBuf.indexOf(' ', s1 + 1);
+
+        if (s1 > 0 && s2 > s1) {
+          String name = cmdBuf.substring(s1 + 1, s2);
+          int value = cmdBuf.substring(s2 + 1).toInt();
+
+          if (name == "LIGHT") digitalWrite(RELAY_LIGHT, value ? HIGH : LOW);
+          else if (name == "FAN") digitalWrite(RELAY_FAN, value ? HIGH : LOW);
+          else if (name == "PUMP") digitalWrite(RELAY_PUMP, value ? HIGH : LOW);
+
+          Serial.print("ACK RELAY ");
+          Serial.print(name);
+          Serial.print(" ");
+          Serial.println(value);
+        }
+      }
+
+      cmdBuf = "";
+    } else {
+      if (cmdBuf.length() < 64) cmdBuf += c;
+    }
+  }
+}
+
+// ---------- Setup ----------
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(RELAY_LIGHT, OUTPUT);
+  pinMode(RELAY_FAN, OUTPUT);
+  pinMode(RELAY_PUMP, OUTPUT);
+
+  digitalWrite(RELAY_LIGHT, LOW);
+  digitalWrite(RELAY_FAN, LOW);
+  digitalWrite(RELAY_PUMP, LOW);
+
+  pinMode(US_TRIG_PIN, OUTPUT);
+  pinMode(US_ECHO_PIN, INPUT);
+
+  pinMode(FLOW_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(FLOW_PIN), flowISR, RISING);
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+  tslOK = tsl.begin();
+  if (tslOK) {
+    tsl.setGain(TSL2591_GAIN_MED);
+    tsl.setTiming(TSL2591_INTEGRATIONTIME_100MS);
+  }
+
+  Serial.println("STM32 READY");
+}
+
+// ---------- Loop ----------
+void loop() {
+
+  // 🔹 Always listen for ESP commands
+  handleSerialCommands();
+
+  // 🔹 60s sensor report
+  static unsigned long last = 0;
+  if (millis() - last < REPORT_INTERVAL) return;
+  last = millis();
+
+  int phRaw = analogRead(PH_PIN);
+  float phV = (phRaw / ADC_MAX) * VREF;
+  Serial.print("PH_V="); Serial.println(phV, 4);
+
+  float turbV = analogRead(TURB_PIN) * VREF / ADC_MAX;
+  Serial.print("TURBIDITY NTU: ");
+  Serial.println(turbFromVoltage(turbV), 2);
+
+  float tdsV = analogRead(TDS_PIN) * VREF / ADC_MAX;
+  Serial.print("TDS: ");
+  Serial.println(tdsFromVoltage(tdsV), 1);
+
+  noInterrupts();
+  unsigned long pulses = flowPulses;
+  flowPulses = 0;
+  interrupts();
+  Serial.print("FLOW PULSES PPM: ");
+  Serial.println(pulses);
+
+  long cm = readUltrasonicCM();
+  if (cm >= 0) {
+    Serial.print("WATER_LEVEL cm= ");
+    Serial.println(cm);
+  } else {
+    Serial.println("WATER_LEVEL cm= ERR");
+  }
+
+  if (tslOK) {
+    uint32_t lum = tsl.getFullLuminosity();
+    uint16_t ch0 = lum & 0xFFFF;
+    uint16_t ch1 = lum >> 16;
+    Serial.print("LIGHT lux= ");
+    Serial.println(tsl.calculateLux(ch0, ch1), 1);
+  } else {
+    Serial.println("LIGHT lux= ERR");
+  }
+
+  Serial.print("RELAY: LIGHT=");
+  Serial.print(digitalRead(RELAY_LIGHT));
+  Serial.print(" FAN=");
+  Serial.print(digitalRead(RELAY_FAN));
+  Serial.print(" PUMP=");
+  Serial.println(digitalRead(RELAY_PUMP));
+
+  Serial.println("---END REPORT---");
+}

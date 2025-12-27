@@ -11,17 +11,25 @@ const CameraHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: ${props => props.theme.spacing.lg};
+  margin-bottom: ${props => props.theme.spacing.md};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    margin-bottom: ${props => props.theme.spacing.sm};
+  }
 `;
 
 const CameraTitle = styled.h2`
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1rem;
+  font-weight: 600;
   color: ${props => props.theme.colors.text};
-  margin: 0 0 ${props => props.theme.spacing.lg} 0;
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: ${props => props.theme.spacing.sm};
+  gap: ${props => props.theme.spacing.xs};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 0.9rem;
+  }
 `;
 
 const CameraCount = styled.span`
@@ -35,28 +43,28 @@ const CameraCount = styled.span`
 const CameraGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: ${props => props.theme.spacing.lg};
+  gap: ${props => props.theme.spacing.md};
   max-width: 100%;
 
   @media (max-width: ${props => props.theme.breakpoints.lg}) {
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: ${props => props.theme.spacing.md};
   }
 
   @media (max-width: ${props => props.theme.breakpoints.md}) {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
+    gap: ${props => props.theme.spacing.sm};
   }
 
   @media (max-width: ${props => props.theme.breakpoints.sm}) {
-    grid-template-columns: 1fr;
-    gap: ${props => props.theme.spacing.md};
+    grid-template-columns: repeat(2, 1fr);
+    gap: ${props => props.theme.spacing.xs};
   }
 `;
 
 const CameraCard = styled.div`
   background: ${props => props.theme.colors.background};
   border-radius: ${props => props.theme.borderRadius.md};
-  padding: ${props => props.theme.spacing.md};
+  padding: ${props => props.theme.spacing.sm};
   border: 2px solid ${props => props.hasImage
     ? props.theme.colors.success
     : props.theme.colors.border};
@@ -70,13 +78,22 @@ const CameraCard = styled.div`
     transform: translateY(-2px);
     box-shadow: ${props => props.theme.shadows.md};
   }
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    padding: ${props => props.theme.spacing.xs};
+    border-width: 1px;
+  }
 `;
 
 const CameraCardHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: ${props => props.theme.spacing.sm};
+  margin-bottom: ${props => props.theme.spacing.xs};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    margin-bottom: 4px;
+  }
 `;
 
 const CameraName = styled.h4`
@@ -84,20 +101,29 @@ const CameraName = styled.h4`
   font-weight: ${props => props.theme.fontWeights.semibold};
   color: ${props => props.theme.colors.text};
   margin: 0;
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 0.7rem;
+  }
 `;
 
 const CameraImageContainer = styled.div`
   width: 100%;
-  aspect-ratio: 4/3; /* Standard camera aspect ratio */
+  aspect-ratio: 4/3;
   background: ${props => props.theme.colors.surfaceHover};
-  border-radius: ${props => props.theme.borderRadius.md};
+  border-radius: ${props => props.theme.borderRadius.sm};
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: ${props => props.theme.spacing.sm};
+  margin-bottom: ${props => props.theme.spacing.xs};
   overflow: hidden;
   position: relative;
-  min-height: 180px; /* Fallback for older browsers */
+  min-height: 120px;
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    min-height: 80px;
+    border-radius: 4px;
+  }
 `;
 
 const CameraImage = styled.img`
@@ -115,13 +141,18 @@ const PlaceholderText = styled.div`
 
 const ImageTimestamp = styled.div`
   position: absolute;
-  bottom: ${props => props.theme.spacing.xs};
-  right: ${props => props.theme.spacing.xs};
+  bottom: 2px;
+  right: 2px;
   background: rgba(0, 0, 0, 0.7);
   color: white;
-  padding: ${props => props.theme.spacing.xs};
-  border-radius: ${props => props.theme.borderRadius.sm};
-  font-size: ${props => props.theme.fontSizes.xs};
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-size: 0.6rem;
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 0.5rem;
+    padding: 1px 3px;
+  }
 `;
 
 const CameraInfo = styled.div`
@@ -130,6 +161,13 @@ const CameraInfo = styled.div`
   align-items: center;
   font-size: ${props => props.theme.fontSizes.xs};
   color: ${props => props.theme.colors.textMuted};
+
+  @media (max-width: ${props => props.theme.breakpoints.sm}) {
+    font-size: 0.6rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
 `;
 
 const LoadingMessage = styled.div`
