@@ -11,7 +11,7 @@ import {
   Area,
   AreaChart
 } from 'recharts';
-import axios from 'axios';
+import api from '../services/api';
 
 const Overlay = styled.div`
   position: fixed;
@@ -259,7 +259,7 @@ const SensorChartModal = ({ isOpen, onClose, sensorInfo, isRoom = false }) => {
         ? `/room/${sensorInfo.unitId}/sensors/history`
         : `/units/${sensorInfo.unitId}/sensors/history`;
 
-      const response = await axios.get(endpoint, {
+      const response = await api.get(endpoint, {
         params: {
           sensor: sensorKey,
           range: selectedRange

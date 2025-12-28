@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import axios from 'axios';
+import api from '../services/api';
 
 const Container = styled.div`
   display: flex;
@@ -153,7 +153,7 @@ const HydroUnits = () => {
     const fetchData = async () => {
       try {
         const promises = hydroUnits.map(async (unit) => {
-          const response = await axios.get(`/units/${unit.id}/sensors`);
+          const response = await api.get(`/units/${unit.id}/sensors`);
           return { unitId: unit.id, data: response.data };
         });
 

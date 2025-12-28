@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { useSocket } from '../contexts/SocketContext';
 import CircularProgress from '../components/CircularProgress';
-import axios from 'axios';
+import api from '../services/api';
 
 const pulse = keyframes`
   0%, 100% { opacity: 1; }
@@ -421,14 +421,14 @@ const Dashboard = () => {
     const fetchData = async () => {
       try {
         const hydroPromises = hydroUnits.map(async (unit) => {
-          const response = await axios.get(`/units/${unit.id}/sensors`);
+          const response = await api.get(`/units/${unit.id}/sensors`);
           return { unitId: unit.id, data: response.data };
         });
 
         const [hydroResults, frontResponse, backResponse] = await Promise.all([
           Promise.all(hydroPromises),
-          axios.get('/room/front/sensors'),
-          axios.get('/room/back/sensors')
+          api.get('/room/front/sensors'),
+          api.get('/room/back/sensors')
         ]);
 
         const hydroData = {};

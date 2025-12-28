@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import IoTStatusIndicator from './IoTStatusIndicator';
-import axios from 'axios';
+import api from '../services/api';
 
 const CameraContainer = styled.div`
   width: 100%;
@@ -223,7 +223,7 @@ const CameraGridComponent = ({ unitId }) => {
 
   const fetchCameras = async () => {
     try {
-      const response = await axios.get(`/cameras/${unitId}`);
+      const response = await api.get(`/cameras/${unitId}`);
       setCameras(response.data.cameras || []);
     } catch (err) {
       console.error('Error fetching cameras:', err);
@@ -233,7 +233,7 @@ const CameraGridComponent = ({ unitId }) => {
 
   const fetchLatestImages = async () => {
     try {
-      const response = await axios.get(`/units/${unitId}/cameras/latest`);
+      const response = await api.get(`/units/${unitId}/cameras/latest`);
       setCameraImages(response.data.camera_grid || {});
       setLoading(false);
     } catch (err) {

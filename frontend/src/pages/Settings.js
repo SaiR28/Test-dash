@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import axios from 'axios';
+import api from '../services/api';
 
 const Container = styled.div`
   display: flex;
@@ -214,7 +214,7 @@ const Settings = () => {
 
   const fetchRanges = async () => {
     try {
-      const response = await axios.get('/settings/ranges');
+      const response = await api.get('/settings/ranges');
       if (response.data.ranges) {
         setRanges({ ...defaultRanges, ...response.data.ranges });
       }
@@ -240,7 +240,7 @@ const Settings = () => {
     setLoading(true);
     setStatus(null);
     try {
-      await axios.post('/settings/ranges', { ranges });
+      await api.post('/settings/ranges', { ranges });
       setStatus({ type: 'success', message: 'Safe ranges saved successfully!' });
     } catch (error) {
       setStatus({ type: 'error', message: 'Failed to save ranges.' });
@@ -252,7 +252,7 @@ const Settings = () => {
   const handleClearDatabase = async () => {
     setClearLoading(true);
     try {
-      await axios.post('/settings/clear-data');
+      await api.post('/settings/clear-data');
       setShowConfirm(false);
       setStatus({ type: 'success', message: 'Database cleared successfully!' });
     } catch (error) {
