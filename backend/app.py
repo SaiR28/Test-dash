@@ -1480,13 +1480,21 @@ def camera_upload_worker(worker_id):
 # Initialize database when module loads
 init_db()
 
-if __name__ == '__main__':
-    # Start camera upload queue workers
+# Start camera upload queue workers (runs on import, needed for gunicorn)
+_workers_started = False
+def start_camera_workers():
+    global _workers_started
+    if _workers_started:
+        return
+    _workers_started = True
     for i in range(QUEUE_WORKER_COUNT):
         worker_thread = threading.Thread(target=camera_upload_worker, args=(i,))
         worker_thread.daemon = True
         worker_thread.start()
     print(f"Started {QUEUE_WORKER_COUNT} camera upload workers")
 
+start_camera_workers()
+
+if __name__ == '__main__':
     # Run Flask app with SocketIO
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)
