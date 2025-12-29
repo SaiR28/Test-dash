@@ -303,7 +303,7 @@ const CameraGridComponent = ({ unitId }) => {
                 {camera.image_url ? (
                   <>
                     <CameraImage
-                      src={`http://localhost:5000${camera.image_url}`}
+                      src={camera.image_url}
                       alt={`Camera ${camera.camera_id}`}
                       onError={(e) => {
                         e.target.style.display = 'none';
