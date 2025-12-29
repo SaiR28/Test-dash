@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     volumes:
       - sqlite_data:/app/data
+      - camera_images:/app/camera_images
     environment:
       - FLASK_ENV=production
       - DATABASE_PATH=/app/data/hydroponics.db
@@ -44,4 +45,6 @@ networks:
 
 volumes:
   sqlite_data:
+    driver: local
+  camera_images:
     driver: local
